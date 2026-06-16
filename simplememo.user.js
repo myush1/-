@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name  심플 팝업 메모장 
+// @name  심플 팝업 메모장
 // @namespace http://tampermonkey.net/
-// @version 1.1.0
-// @description v1.0.9 기반 + 유저노트 500자 자동 확장 조절(요금 방어) 및 실시간 DOM UI 동기화 추가
+// @version 1.1.6
+// @description v1.1.5 기반 + React 내부 Props(__reactProps$) 탈취를 통한 완벽한 실시간 동기화
 // @author Assistant & Obsessive UI Designer
 // @match  https://crack.wrtn.ai/*
 // @license MIT
@@ -110,6 +110,22 @@
    .sn-icon-btn:active { background-color: rgba(120, 120, 128, 0.12); transform: scale(0.95); }
 
    .sn-folder-dragging { opacity: 0.5; background: var(--sn-listItemSelectedBg) !important; }
+
+   /* 토글 스위치 디자인 */
+   .sn-toggle-switch {
+     position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink:0;
+   }
+   .sn-toggle-switch input { opacity: 0; width: 0; height: 0; }
+   .sn-toggle-slider {
+     position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+     background-color: var(--sn-border); transition: .2s; border-radius: 20px;
+   }
+   .sn-toggle-slider:before {
+     position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px;
+     background-color: white; transition: .2s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+   }
+   .sn-toggle-switch input:checked + .sn-toggle-slider { background-color: var(--sn-accent); }
+   .sn-toggle-switch input:checked + .sn-toggle-slider:before { transform: translateX(14px); }
   `;
   document.head.appendChild(style);
  }
@@ -124,7 +140,8 @@
   chevronDown: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
   chevronRight: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`,
   plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
-  photo: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`
+  photo: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`,
+  edit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>`
  };
 
  const API_BASE = 'https://crack-api.wrtn.ai/crack-gen';
@@ -162,46 +179,101 @@
   }).then(r => r.ok ? true : false).catch(() => false);
  }
 
- // 원래 웹페이지(리액트)의 유저노트 UI 강제 동기화 로직
- function syncNativeUserNoteUI(content, isExtend) {
-    const textareas = Array.from(document.querySelectorAll('textarea'));
-    // placeholder 또는 속성으로 원본 유저노트 textarea 찾기
-    const userNoteTa = textareas.find(ta => {
-        const ph = ta.getAttribute('placeholder') || '';
-        const al = ta.getAttribute('aria-label') || '';
-        return ph.includes('잊으면 안되는') || ph.includes('추가하고 싶은') || al.includes('유저');
-    });
+ // 유저노트 폴딩 상태 처리를 위한 대기열
+ let pendingSyncData = null;
 
-    if (userNoteTa) {
-        // 1. 텍스트 값 동기화 (React 상태 업데이트 트리거)
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-        nativeInputValueSetter.call(userNoteTa, content);
-        userNoteTa.dispatchEvent(new Event('input', { bubbles: true }));
+ // ==========================================
+ // 🎯 루트 A: React Props 강제 탈취 로직
+ // ==========================================
+ function hijackReactState(ta, content, isExtend) {
+    // 1. DOM 강제 덮어쓰기 (시각적 변경)
+    ta.value = content;
 
-        // 2. 확장 모드 스위치 및 글자 수 카운터 동기화
-        const root = userNoteTa.closest('.flex.flex-col') || userNoteTa.parentElement;
-        if (root) {
-            // 스위치 강제 시각적 업데이트
-            const switchBtn = root.querySelector('button[role="switch"]');
-            if (switchBtn) {
-                const nextChecked = isExtend ? 'true' : 'false';
-                const nextState = isExtend ? 'checked' : 'unchecked';
-                switchBtn.setAttribute('aria-checked', nextChecked);
-                switchBtn.setAttribute('data-state', nextState);
-                const thumb = switchBtn.querySelector('span');
-                if (thumb) thumb.setAttribute('data-state', nextState);
-            }
+    // 2. React 속성(Props) 탈취 후 onChange 발생시키기
+    const reactPropsKey = Object.keys(ta).find(key => key.startsWith('__reactProps$'));
+    if (reactPropsKey) {
+        const props = ta[reactPropsKey];
+        if (props && typeof props.onChange === 'function') {
+            props.onChange({
+                target: { value: content },
+                currentTarget: { value: content },
+                bubbles: true,
+                cancelable: true,
+                defaultPrevented: false,
+                isTrusted: true,
+                type: 'change'
+            });
+        }
+    }
 
-            // 카운터 강제 시각적 업데이트
-            const spans = Array.from(root.querySelectorAll('span'));
-            const counterSpan = spans.find(span => /^\d+\s*\/\s*\d+$/.test(span.textContent?.trim() || ''));
-            if (counterSpan) {
-                const maxLen = isExtend ? 2000 : 500;
-                counterSpan.textContent = `${[...content].length}/${maxLen}`;
+    // 3. 확장 모드 토글 스위치 상태 탈취 및 클릭
+    const root = ta.closest('.flex.flex-col') || ta.parentElement;
+    if (root) {
+        const switchBtn = root.querySelector('button[role="switch"]');
+        if (switchBtn) {
+            const currentState = switchBtn.getAttribute('aria-checked') === 'true';
+
+            // 목표 상태(isExtend)와 현재 리액트 상태가 다르다면 강제로 클릭 유발
+            if (currentState !== isExtend) {
+                const btnPropsKey = Object.keys(switchBtn).find(key => key.startsWith('__reactProps$'));
+                if (btnPropsKey && switchBtn[btnPropsKey] && typeof switchBtn[btnPropsKey].onClick === 'function') {
+                    switchBtn[btnPropsKey].onClick({
+                        bubbles: true,
+                        cancelable: true,
+                        type: 'click'
+                    });
+                } else {
+                    switchBtn.click(); // fallback
+                }
             }
         }
     }
  }
+
+ // 대기열 처리 및 실행
+ function processPendingHijack() {
+    if (!pendingSyncData) return;
+
+    const textareas = Array.from(document.querySelectorAll('textarea'));
+    const userNoteTa = textareas.find(ta => {
+        const ph = ta.getAttribute('placeholder') || '';
+        const al = ta.getAttribute('aria-label') || '';
+        return ph.includes('잊으면 안되는') || ph.includes('추가하고 싶은') || al.includes('유저') || ph.includes('설정');
+    });
+
+    if (userNoteTa) {
+        hijackReactState(userNoteTa, pendingSyncData.content, pendingSyncData.isExtend);
+        pendingSyncData = null; // 처리 완료 시 해제
+    }
+ }
+
+ // 유저 노트 탭을 여는 순간, 혹은 DOM이 렌더링되는 순간을 감시
+ const hijackObserver = new MutationObserver(() => {
+    if (pendingSyncData) processPendingHijack();
+ });
+
+ if (document.body) {
+    hijackObserver.observe(document.body, { childList: true, subtree: true });
+ } else {
+    document.addEventListener('DOMContentLoaded', () => {
+        hijackObserver.observe(document.body, { childList: true, subtree: true });
+    });
+ }
+
+ // 유저노트 탭 클릭 이벤트 가로채기 (이중 방어)
+ document.addEventListener('click', (e) => {
+    const targetBtn = e.target.closest('div[role="button"]');
+    if (targetBtn && targetBtn.textContent.includes('유저 노트')) {
+        if (pendingSyncData) {
+            // 클릭 직후 리액트 렌더링 타이밍을 예측하여 융단폭격
+            [20, 80, 200].forEach(delay => {
+                setTimeout(() => processPendingHijack(), delay);
+            });
+        }
+    }
+ }, true);
+
+ // ------------------------------------------
 
  const db = new Dexie("SimpleNotepadDB");
  db.version(1).stores({ notepadData: 'id' });
@@ -548,14 +620,35 @@
      fControls.style.cssText = "display:flex; align-items:center; gap:2px; flex-shrink:0; opacity:0.5;";
 
      if (!isSystemFolder && !isSelectMode) {
+      const controlBtnStyle = "width: 24px; height: 24px; padding: 0;";
+
       const fAddSubBtn = document.createElement('div');
-      fAddSubBtn.innerHTML = Icons.plus; fAddSubBtn.className = 'sn-icon-btn'; fAddSubBtn.style.padding = '4px';
+      fAddSubBtn.innerHTML = Icons.plus;
+      fAddSubBtn.className = 'sn-icon-btn';
+      fAddSubBtn.style.cssText = controlBtnStyle;
       fAddSubBtn.onclick = (e) => { e.stopPropagation(); const name = prompt(`'${folder.name}' 안에 만들 새 폴더 이름:`, "새 하위 폴더"); if (name) { appData.folders.push({ id: 'folder_' + Date.now(), name: name, isOpen: true, parentId: folder.id }); folder.isOpen = true; saveData(); renderBody(); } };
 
+      const fEditBtn = document.createElement('div');
+      fEditBtn.innerHTML = Icons.edit;
+      fEditBtn.className = 'sn-icon-btn';
+      fEditBtn.style.cssText = controlBtnStyle;
+      fEditBtn.onclick = (e) => {
+       e.stopPropagation();
+       const newName = prompt(`'${folder.name}' 폴더의 새 이름을 입력하세요:`, folder.name);
+       if (newName && newName.trim() !== "") {
+        folder.name = newName.trim();
+        saveData();
+        renderBody();
+       }
+      };
+
       const fDelBtn = document.createElement('div');
-      fDelBtn.innerHTML = Icons.trash; fDelBtn.className = 'sn-icon-btn'; fDelBtn.style.padding = '4px';
+      fDelBtn.innerHTML = Icons.trash;
+      fDelBtn.className = 'sn-icon-btn';
+      fDelBtn.style.cssText = controlBtnStyle;
       fDelBtn.onclick = (e) => { e.stopPropagation(); if(confirm(`'${folder.name}' 폴더를 삭제할까요?\n(하위 폴더는 상위로 이동하며, 메모는 휴지통으로 이동합니다)`)) { appData.notes.forEach(n => { if(n.folderId === folder.id) n.isTrashed = true; }); appData.folders.forEach(f => { if(f.parentId === folder.id) f.parentId = folder.parentId; }); appData.folders = appData.folders.filter(f => f.id !== folder.id); saveData(); renderBody(); } };
-      fControls.append(fAddSubBtn, fDelBtn);
+
+      fControls.append(fAddSubBtn, fEditBtn, fDelBtn);
      }
 
      fHeader.append(fTitleWrap, fControls);
@@ -931,7 +1024,6 @@
           isOverLimit = plainTextLen > 300;
           limitText = `${plainTextLen}/300자`;
       } else if (isUserNoteMode) {
-          // 스마트 확장 조절: 글자 수에 따라 isExtend 자동 반영 (요금 방어)
           activeNote.isExtend = plainTextLen > 500;
 
           const maxLen = activeNote.isExtend ? 2000 : 500;
@@ -973,8 +1065,8 @@
        } else {
            res = await apiUserNoteSave(pureText, activeNote.isExtend);
            if (res) {
-               // 저장 성공 시 새로고침 없이 본래 웹페이지 UI에 즉시 동기화 적용
-               syncNativeUserNoteUI(pureText, activeNote.isExtend);
+               pendingSyncData = { content: pureText, isExtend: activeNote.isExtend };
+               processPendingHijack(); // 즉시 탈취 시도
            }
        }
 
