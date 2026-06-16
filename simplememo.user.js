@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name  심플 팝업 메모장
 // @namespace http://tampermonkey.net/
-// @version 1.1.6
-// @description v1.1.5 기반 + React 내부 Props(__reactProps$) 탈취를 통한 완벽한 실시간 동기화
+// @version 1.1.7
+// @description v1.1.6 기반 + 유저노트 탭에 로컬 식별용 제목칸 복구
 // @author Assistant & Obsessive UI Designer
 // @match  https://crack.wrtn.ai/*
 // @license MIT
@@ -179,17 +179,11 @@
   }).then(r => r.ok ? true : false).catch(() => false);
  }
 
- // 유저노트 폴딩 상태 처리를 위한 대기열
  let pendingSyncData = null;
 
- // ==========================================
- // 🎯 루트 A: React Props 강제 탈취 로직
- // ==========================================
  function hijackReactState(ta, content, isExtend) {
-    // 1. DOM 강제 덮어쓰기 (시각적 변경)
     ta.value = content;
 
-    // 2. React 속성(Props) 탈취 후 onChange 발생시키기
     const reactPropsKey = Object.keys(ta).find(key => key.startsWith('__reactProps$'));
     if (reactPropsKey) {
         const props = ta[reactPropsKey];
@@ -206,14 +200,12 @@
         }
     }
 
-    // 3. 확장 모드 토글 스위치 상태 탈취 및 클릭
     const root = ta.closest('.flex.flex-col') || ta.parentElement;
     if (root) {
         const switchBtn = root.querySelector('button[role="switch"]');
         if (switchBtn) {
             const currentState = switchBtn.getAttribute('aria-checked') === 'true';
 
-            // 목표 상태(isExtend)와 현재 리액트 상태가 다르다면 강제로 클릭 유발
             if (currentState !== isExtend) {
                 const btnPropsKey = Object.keys(switchBtn).find(key => key.startsWith('__reactProps$'));
                 if (btnPropsKey && switchBtn[btnPropsKey] && typeof switchBtn[btnPropsKey].onClick === 'function') {
@@ -223,14 +215,13 @@
                         type: 'click'
                     });
                 } else {
-                    switchBtn.click(); // fallback
+                    switchBtn.click();
                 }
             }
         }
     }
  }
 
- // 대기열 처리 및 실행
  function processPendingHijack() {
     if (!pendingSyncData) return;
 
@@ -243,11 +234,10 @@
 
     if (userNoteTa) {
         hijackReactState(userNoteTa, pendingSyncData.content, pendingSyncData.isExtend);
-        pendingSyncData = null; // 처리 완료 시 해제
+        pendingSyncData = null;
     }
  }
 
- // 유저 노트 탭을 여는 순간, 혹은 DOM이 렌더링되는 순간을 감시
  const hijackObserver = new MutationObserver(() => {
     if (pendingSyncData) processPendingHijack();
  });
@@ -260,20 +250,16 @@
     });
  }
 
- // 유저노트 탭 클릭 이벤트 가로채기 (이중 방어)
  document.addEventListener('click', (e) => {
     const targetBtn = e.target.closest('div[role="button"]');
     if (targetBtn && targetBtn.textContent.includes('유저 노트')) {
         if (pendingSyncData) {
-            // 클릭 직후 리액트 렌더링 타이밍을 예측하여 융단폭격
             [20, 80, 200].forEach(delay => {
                 setTimeout(() => processPendingHijack(), delay);
             });
         }
     }
  }, true);
-
- // ------------------------------------------
 
  const db = new Dexie("SimpleNotepadDB");
  db.version(1).stores({ notepadData: 'id' });
@@ -892,7 +878,8 @@
         titleInput.setAttribute('maxlength', '20');
         titleInput.placeholder = "제목 없음 (최대 20자)";
     } else if (isUserNoteMode) {
-        titleInput.style.display = 'none'; // 유저 노트는 제목 숨김
+        titleInput.removeAttribute('maxlength');
+        titleInput.placeholder = "제목 없음";
     } else {
         titleInput.removeAttribute('maxlength');
         titleInput.placeholder = "제목 없음";
@@ -1066,7 +1053,7 @@
            res = await apiUserNoteSave(pureText, activeNote.isExtend);
            if (res) {
                pendingSyncData = { content: pureText, isExtend: activeNote.isExtend };
-               processPendingHijack(); // 즉시 탈취 시도
+               processPendingHijack();
            }
        }
 
@@ -1100,12 +1087,6 @@
       updateCharCount();
       triggerAutoSave();
      });
-    }
-
-    if (isUserNoteMode) {
-        titleContainer.style.marginBottom = '4px';
-        titleContainer.style.paddingBottom = '0';
-        titleContainer.style.borderBottom = 'none';
     }
 
     editor.append(focusTopBar, titleContainer, editorDiv, footer);
