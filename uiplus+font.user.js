@@ -7180,6 +7180,14 @@
         finalCSS += `
           .group\\/header span.line-clamp-1 {
             font-family: '${roomConfig.title}', sans-serif !important;
+            /* 👇 폰트 위아래 잘림 방지를 위한 마법의 CSS */
+            line-height: 1.4 !important;          /* 줄 간격 넉넉하게 */
+            padding-top: 2px !important;          /* 윗 공간 확보 */
+            padding-bottom: 2px !important;       /* 아래 공간 확보 */
+            display: block !important;            /* 블록 요소로 변경 */
+            white-space: nowrap !important;       /* 한 줄로 강제 정렬 */
+            overflow: hidden !important;          /* 상자 밖은 숨김 */
+            text-overflow: ellipsis !important;   /* 가로 말줄임표(...) 유지 */
           }
         `;
       }
