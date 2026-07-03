@@ -7338,7 +7338,7 @@
     fontSection.innerHTML = `
       <button type="button" class="crack-ui-section-head" data-crack-ui-section-toggle="font" aria-expanded="${savedFontOpen ? 'true' : 'false'}">
         <span>
-          <span class="crack-ui-section-title">폰트 설정</span>
+          <span class="crack-ui-section-title">폰트</span>
         </span>
         <span class="crack-ui-section-chevron" aria-hidden="true">▾</span>
       </button>
@@ -7346,7 +7346,7 @@
       <div class="crack-ui-section-body" data-crack-ui-section-body="font" ${savedFontOpen ? '' : 'hidden'}>
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title">폰트 보관함</span>
+            <span class="crack-ui-choice-title">보관함</span>
           </div>
 
           <div id="crack-ui-font-chips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;"></div>
