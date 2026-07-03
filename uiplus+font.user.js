@@ -7148,7 +7148,7 @@
     fontSection.innerHTML = `
       <button type="button" class="crack-ui-section-head" data-crack-ui-section-toggle="font" aria-expanded="false">
         <span>
-          <span class="crack-ui-section-title">폰트 설정</span>
+          <span class="crack-ui-section-title">폰트</span>
         </span>
         <span class="crack-ui-section-chevron" aria-hidden="true">▾</span>
       </button>
@@ -7158,8 +7158,7 @@
         <!-- 1. 폰트 보관함 (전역) -->
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title">1. 내 폰트 보관함</span>
-            <span style="font-size:10px; color:#aaa;">(모든 방 공유)</span>
+            <span class="crack-ui-choice-title">폰트 보관함</span>
           </div>
 
           <div id="crack-ui-font-chips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
@@ -7173,21 +7172,21 @@
         <!-- 2. 현재 방 폰트 적용 (개별 맵핑) -->
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title" style="color: #FE4532;">2. 현재 채팅방 폰트 설정</span>
+            <span class="crack-ui-choice-title">채팅방 폰트 설정</span>
           </div>
 
           <div style="margin-top: 4px;">
-            <div class="crack-ui-row-desc">일반 본문 (대사, 지문, 인용구)</div>
+            <div class="crack-ui-row-desc">본문</div>
             <select id="crack-ui-font-sel-body" class="crack-ui-font-select"></select>
           </div>
 
           <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">코드 블록 (스탯창, 시스템 메세지)</div>
+            <div class="crack-ui-row-desc">코드 블록</div>
             <select id="crack-ui-font-sel-code" class="crack-ui-font-select"></select>
           </div>
 
           <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">상단 채팅방 제목</div>
+            <div class="crack-ui-row-desc">스토리명</div>
             <select id="crack-ui-font-sel-title" class="crack-ui-font-select"></select>
           </div>
         </div>
