@@ -54,6 +54,7 @@
     gearDesktop: 'crack-ui-gear-desktop',
     gearMobile: 'crack-ui-gear-mobile',
     toggleHeader: 'crack-ui-toggle-header',
+    togglePinRoomTopBar: 'crack-ui-toggle-pin-room-top-bar',
     toggleLineBreak: 'crack-ui-toggle-line-break',
     toggleAnimatedThumbs: 'crack-ui-toggle-animated-thumbs',
     toggleStatBar: 'crack-ui-toggle-stat-bar',
@@ -80,6 +81,7 @@
 
   const LS = {
     autoHideHeader: 'crack_ui_auto_hide_header',
+    pinRoomTopBar: 'crack_ui_pin_room_top_bar',
     imageConfig: 'wrtn_img_resizer_config',
     lineBreakOptimize: 'crack_ui_line_break_optimize',
     pauseAnimatedThumbs: 'crack_ui_pause_animated_thumbs',
@@ -104,6 +106,7 @@
 
   const CLS = {
     autoHide: 'crack-ui-autohide-header',
+    pinRoomTopBar: 'crack-ui-pin-room-top-bar',
     reveal: 'crack-ui-header-reveal',
     panelOpen: 'crack-ui-panel-open',
     lineBreak: 'crack-ui-line-break-optimize',
@@ -313,6 +316,7 @@
   }
 
   let autoHideHeader = readStorage(LS.autoHideHeader) === '1';
+  let pinRoomTopBar = readStorage(LS.pinRoomTopBar) === '1';
   let imageSize = loadImageSize();
   let lineBreakOptimize = loadLineBreakOptimize();
   let pauseAnimatedThumbs = loadPauseAnimatedThumbs();
@@ -578,6 +582,14 @@
         transition:
           opacity 160ms ease,
           transform 160ms ease !important;
+      }
+
+      html.${CLS.pinRoomTopBar} [data-crack-ui-room-top-bar="1"],
+      html.${CLS.pinRoomTopBar} .group\\/header > div.absolute.z-\\[5\\] {
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        transform: translateY(0) !important;
       }
 
 
@@ -3987,6 +3999,18 @@
               </span>
             </label>
 
+            <label class="crack-ui-row">
+              <span class="crack-ui-row-text">
+                <span class="crack-ui-row-name">채팅방 제목 고정</span>
+                <span class="crack-ui-row-desc">항상 뚜렷하게 보이도록 고정합니다.</span>
+              </span>
+
+              <span>
+                <input id="${ID.togglePinRoomTopBar}" class="crack-ui-toggle" type="checkbox">
+                <span class="crack-ui-switch" aria-hidden="true"></span>
+              </span>
+            </label>
+
             <label class="crack-ui-row" data-crack-ui-chat-list-auto-hide-row data-disabled="${isChatListAutoHideSupportedViewport() ? '0' : '1'}" aria-disabled="${isChatListAutoHideSupportedViewport() ? 'false' : 'true'}">
               <span class="crack-ui-row-text">
                 <span class="crack-ui-row-name">채팅 목록 자동 숨김</span>
@@ -4029,7 +4053,7 @@
     updateThemeUi();
     updateChatListAutoHideUi();
 
-    bindCheckbox(panel, ID.toggleHeader, autoHideHeader, (checked) => {
+   bindCheckbox(panel, ID.toggleHeader, autoHideHeader, (checked) => {
       autoHideHeader = checked;
       writeStorage(LS.autoHideHeader, autoHideHeader ? '1' : '0');
 
@@ -4042,6 +4066,14 @@
       }
 
       applyState();
+    });
+
+    bindCheckbox(panel, ID.togglePinRoomTopBar, pinRoomTopBar, (checked) => {
+      pinRoomTopBar = checked;
+      writeStorage(LS.pinRoomTopBar, pinRoomTopBar ? '1' : '0');
+      applyState();
+      if (!pinRoomTopBar) setRoomTopBarHidden(true);
+      else releaseRoomTopBarHidden();
     });
     bindCheckbox(panel, ID.toggleAnimatedThumbs, pauseAnimatedThumbs, (checked) => {
       pauseAnimatedThumbs = checked;
@@ -4149,6 +4181,7 @@
     clearMobileHideTimer();
 
     syncCheckbox(ID.toggleHeader, autoHideHeader);
+    syncCheckbox(ID.togglePinRoomTopBar, pinRoomTopBar);
     syncCheckbox(ID.toggleAnimatedThumbs, pauseAnimatedThumbs);
     syncCheckbox(ID.toggleStatBar, hideStatBar);
     syncCheckbox(ID.toggleLineBreak, lineBreakOptimize);
@@ -4229,6 +4262,7 @@
     markStatBars();
     scheduleSituationImageButtonMark({ immediate: hideSituationImage });
     document.documentElement.classList.toggle(CLS.autoHide, autoHideHeader);
+    document.documentElement.classList.toggle(CLS.pinRoomTopBar, pinRoomTopBar);
     document.documentElement.classList.toggle(CLS.lineBreak, lineBreakOptimize);
     document.documentElement.classList.toggle(CLS.pauseAnimatedThumbs, pauseAnimatedThumbs);
     document.documentElement.classList.toggle(CLS.hideStatBar, hideStatBar);
@@ -5518,7 +5552,7 @@
     }
 
     bar.dataset.crackUiRoomTopBar = '1';
-    if (hidden && roomMenuHandle && crackUiIsChatRoute()) {
+    if (hidden && roomMenuHandle && crackUiIsChatRoute() && !pinRoomTopBar) {
       bar.dataset.crackUiRoomTopBarHidden = '1';
       document.documentElement.classList.add(CLS.roomTopBarHidden);
     } else {
@@ -7077,7 +7111,7 @@
     return match ? match[1].trim() : null;
   }
 
-  // 화면에 폰트 CSS를 뿌려주는 핵심 함수
+   // 화면에 폰트 CSS를 뿌려주는 핵심 함수
   async function applyFontGroup() {
     const roomId = getCurrentRoomId();
     const [allFonts, roomConfig] = await Promise.all([
@@ -7117,6 +7151,14 @@
             font-family: '${roomConfig.code}', monospace !important;
           }
         `;
+      } else if (roomConfig.body) {
+        // 코드 블록이 기본 폰트(설정 안함)일 때, 본문 폰트 상속을 막고 뤼튼 기본값으로 원상복구
+        finalCSS += `
+          .wrtn-codeblock pre, .wrtn-codeblock code,
+          .wrtn-codeblock .shiki span, .wrtn-codeblock div > span {
+            font-family: revert !important;
+          }
+        `;
       }
       if (roomConfig.title) {
         finalCSS += `
@@ -7143,22 +7185,25 @@
     const fontSection = document.createElement('div');
     fontSection.className = 'crack-ui-section';
     fontSection.dataset.crackUiSection = 'font';
-    fontSection.dataset.open = '0';
+
+    // 폰트 탭 열림/닫힘 상태 불러오기
+    const savedFontOpen = localStorage.getItem('crack_ui_section_font_open') === '1';
+    fontSection.dataset.open = savedFontOpen ? '1' : '0';
 
     fontSection.innerHTML = `
-      <button type="button" class="crack-ui-section-head" data-crack-ui-section-toggle="font" aria-expanded="false">
+      <button type="button" class="crack-ui-section-head" data-crack-ui-section-toggle="font" aria-expanded="${savedFontOpen ? 'true' : 'false'}">
         <span>
-          <span class="crack-ui-section-title">폰트</span>
+          <span class="crack-ui-section-title">폰트 설정</span>
         </span>
         <span class="crack-ui-section-chevron" aria-hidden="true">▾</span>
       </button>
 
-      <div class="crack-ui-section-body" data-crack-ui-section-body="font" hidden>
-
+      <div class="crack-ui-section-body" data-crack-ui-section-body="font" ${savedFontOpen ? '' : 'hidden'}>
         <!-- 1. 폰트 보관함 (전역) -->
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title">폰트 보관함</span>
+            <span class="crack-ui-choice-title">1. 내 폰트 보관함</span>
+            <span style="font-size:10px; color:#aaa;">(모든 방 공유)</span>
           </div>
 
           <div id="crack-ui-font-chips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
@@ -7172,31 +7217,30 @@
         <!-- 2. 현재 방 폰트 적용 (개별 맵핑) -->
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title">채팅방 폰트 설정</span>
+            <span class="crack-ui-choice-title" style="color: #FE4532;">2. 현재 채팅방 폰트 설정</span>
           </div>
 
           <div style="margin-top: 4px;">
-            <div class="crack-ui-row-desc">본문</div>
+            <div class="crack-ui-row-desc">일반 본문 (대사, 지문, 인용구)</div>
             <select id="crack-ui-font-sel-body" class="crack-ui-font-select"></select>
           </div>
 
           <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">코드 블록</div>
+            <div class="crack-ui-row-desc">코드 블록 (스탯창, 시스템 메세지)</div>
             <select id="crack-ui-font-sel-code" class="crack-ui-font-select"></select>
           </div>
 
           <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">스토리명</div>
+            <div class="crack-ui-row-desc">상단 채팅방 제목</div>
             <select id="crack-ui-font-sel-title" class="crack-ui-font-select"></select>
           </div>
         </div>
-
       </div>
     `;
 
     panelBody.appendChild(fontSection);
 
-    // 아코디언 토글 이벤트
+    // 아코디언 토글 이벤트 (상태 저장 포함)
     const toggleBtn = fontSection.querySelector('[data-crack-ui-section-toggle="font"]');
     const sectionBody = fontSection.querySelector('[data-crack-ui-section-body="font"]');
     toggleBtn.addEventListener('click', (e) => {
@@ -7206,6 +7250,9 @@
       fontSection.dataset.open = isOpen ? '0' : '1';
       toggleBtn.setAttribute('aria-expanded', !isOpen);
       sectionBody.hidden = isOpen;
+
+      // 상태를 기억장치에 저장
+      localStorage.setItem('crack_ui_section_font_open', fontSection.dataset.open);
       try { positionPanel(); } catch {}
     });
 
@@ -7308,6 +7355,7 @@
     selCode.addEventListener('change', handleSelectChange);
     selTitle.addEventListener('change', handleSelectChange);
   }
+
   const panelObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       if (mutation.target.id === ID.panel && mutation.target.dataset.open === '1') {
