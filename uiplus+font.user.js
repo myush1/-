@@ -4001,7 +4001,7 @@
 
             <label class="crack-ui-row">
               <span class="crack-ui-row-text">
-                <span class="crack-ui-row-name">채팅방 제목 고정</span>
+                <span class="crack-ui-row-name">채팅방 설정 고정</span>
               </span>
 
               <span>
@@ -7201,36 +7201,35 @@
         <!-- 1. 폰트 보관함 (전역) -->
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title">1. 내 폰트 보관함</span>
-            <span style="font-size:10px; color:#aaa;">(모든 방 공유)</span>
+            <span class="crack-ui-choice-title">폰트 보관함</span>
           </div>
 
           <div id="crack-ui-font-chips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
             <!-- 등록된 폰트 칩(이름표)이 여기에 표시됩니다 -->
           </div>
 
-          <textarea id="crack-ui-font-add-css" class="crack-ui-font-input crack-ui-font-textarea" style="min-height: 50px; font-size:11px;" placeholder="눈누 등에서 복사한 @font-face 코드를 통째로 붙여넣으세요."></textarea>
+          <textarea id="crack-ui-font-add-css" class="crack-ui-font-input crack-ui-font-textarea" style="min-height: 50px; font-size:11px;" placeholder="@font-face {"></textarea>
           <button type="button" class="crack-ui-btn crack-ui-btn-danger" id="crack-ui-font-add-btn" style="padding: 6px; margin-top: 4px; background: rgba(255,255,255,0.1); border:none; color:#fff;">+ 보관함에 폰트 등록</button>
         </div>
 
         <!-- 2. 현재 방 폰트 적용 (개별 맵핑) -->
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title" style="color: #FE4532;">2. 현재 채팅방 폰트 설정</span>
+            <span class="crack-ui-choice-title">채팅방 폰트 설정</span>
           </div>
 
           <div style="margin-top: 4px;">
-            <div class="crack-ui-row-desc">일반 본문 (대사, 지문, 인용구)</div>
+            <div class="crack-ui-row-desc">본문</div>
             <select id="crack-ui-font-sel-body" class="crack-ui-font-select"></select>
           </div>
 
           <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">코드 블록 (스탯창, 시스템 메세지)</div>
+            <div class="crack-ui-row-desc">코드블록</div>
             <select id="crack-ui-font-sel-code" class="crack-ui-font-select"></select>
           </div>
 
           <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">상단 채팅방 제목</div>
+            <div class="crack-ui-row-desc">스토리명</div>
             <select id="crack-ui-font-sel-title" class="crack-ui-font-select"></select>
           </div>
         </div>
