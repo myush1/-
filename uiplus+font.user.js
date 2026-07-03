@@ -7357,7 +7357,7 @@
 
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title">채팅방 폰트 설정</span>
+            <span class="crack-ui-choice-title">설정</span>
           </div>
 
           <div style="margin-top: 4px;">
@@ -7366,7 +7366,7 @@
           </div>
 
           <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">코드 블럭</div>
+            <div class="crack-ui-row-desc">코드블럭</div>
             <select id="crack-ui-font-sel-code" class="crack-ui-font-select"></select>
           </div>
 
