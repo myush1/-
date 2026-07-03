@@ -4002,7 +4002,6 @@
             <label class="crack-ui-row">
               <span class="crack-ui-row-text">
                 <span class="crack-ui-row-name">채팅방 제목 고정</span>
-                <span class="crack-ui-row-desc">항상 뚜렷하게 보이도록 고정합니다.</span>
               </span>
 
               <span>
