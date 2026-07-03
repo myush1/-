@@ -4001,7 +4001,8 @@
 
             <label class="crack-ui-row">
               <span class="crack-ui-row-text">
-                <span class="crack-ui-row-name">채팅방 설정 고정</span>
+                <span class="crack-ui-row-name">채팅방 제목 고정</span>
+                <span class="crack-ui-row-desc">항상 보이도록 고정합니다.</span>
               </span>
 
               <span>
@@ -7025,12 +7026,12 @@
   // Crack UI Plus: Font & Theme Extension Module
   // =====================================================
 
- // =====================================================
+    // =====================================================
   // Crack UI Plus: Font Manager (V2 - Global Library & Real-time Mapping)
   // =====================================================
 
   const FontDB = {
-    dbName: 'CrackFontManagerDB_v2', // DB 구조가 바뀌었으므로 v2로 올림
+    dbName: 'CrackFontManagerDB_v2',
     version: 1,
 
     async init() {
@@ -7039,11 +7040,9 @@
 
         request.onupgradeneeded = (e) => {
           const db = e.target.result;
-          // 1. 전역 폰트 보관함
           if (!db.objectStoreNames.contains('fonts')) {
             db.createObjectStore('fonts', { keyPath: 'id' });
           }
-          // 2. 방별 맵핑 설정 보관함
           if (!db.objectStoreNames.contains('roomConfigs')) {
             db.createObjectStore('roomConfigs', { keyPath: 'roomId' });
           }
@@ -7054,63 +7053,84 @@
       });
     },
 
-    // --- 글로벌 폰트 관리 ---
     async saveFont(fontData) {
       const db = await this.init();
-      return new Promise((resolve) => {
-        const tx = db.transaction('fonts', 'readwrite');
-        tx.objectStore('fonts').put(fontData);
-        tx.oncomplete = () => resolve(true);
+      return new Promise((resolve, reject) => {
+        try {
+          const tx = db.transaction('fonts', 'readwrite');
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = (e) => reject(e.target.error);
+          tx.objectStore('fonts').put(fontData);
+        } catch (err) {
+          reject(err);
+        }
       });
     },
     async deleteFont(id) {
       const db = await this.init();
-      return new Promise((resolve) => {
-        const tx = db.transaction('fonts', 'readwrite');
-        tx.objectStore('fonts').delete(id);
-        tx.oncomplete = () => resolve(true);
+      return new Promise((resolve, reject) => {
+        try {
+          const tx = db.transaction('fonts', 'readwrite');
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = (e) => reject(e.target.error);
+          tx.objectStore('fonts').delete(id);
+        } catch (err) {
+          reject(err);
+        }
       });
     },
     async getAllFonts() {
       const db = await this.init();
-      return new Promise((resolve) => {
-        const tx = db.transaction('fonts', 'readonly');
-        const request = tx.objectStore('fonts').getAll();
-        request.onsuccess = () => resolve(request.result || []);
+      return new Promise((resolve, reject) => {
+        try {
+          const tx = db.transaction('fonts', 'readonly');
+          const request = tx.objectStore('fonts').getAll();
+          request.onsuccess = () => resolve(request.result || []);
+          request.onerror = (e) => reject(e.target.error);
+        } catch (err) {
+          reject(err);
+        }
       });
     },
 
-    // --- 방별 설정(맵핑) 관리 ---
     async saveRoomConfig(config) {
       const db = await this.init();
-      return new Promise((resolve) => {
-        const tx = db.transaction('roomConfigs', 'readwrite');
-        tx.objectStore('roomConfigs').put(config);
-        tx.oncomplete = () => resolve(true);
+      return new Promise((resolve, reject) => {
+        try {
+          const tx = db.transaction('roomConfigs', 'readwrite');
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = (e) => reject(e.target.error);
+          tx.objectStore('roomConfigs').put(config);
+        } catch (err) {
+          reject(err);
+        }
       });
     },
     async getRoomConfig(roomId) {
       const db = await this.init();
-      return new Promise((resolve) => {
-        const tx = db.transaction('roomConfigs', 'readonly');
-        const request = tx.objectStore('roomConfigs').get(roomId);
-        request.onsuccess = () => resolve(request.result || null);
+      return new Promise((resolve, reject) => {
+        try {
+          const tx = db.transaction('roomConfigs', 'readonly');
+          const request = tx.objectStore('roomConfigs').get(roomId);
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = (e) => reject(e.target.error);
+        } catch (err) {
+          reject(err);
+        }
       });
     }
   };
 
   function getCurrentRoomId() {
-    const match = location.pathname.match(/\/episodes\/([^/]+)/);
+    const match = location.pathname.match(/\/(?:episodes|c|chats)\/([^/]+)/);
     return match ? match[1] : 'default_global_room';
   }
 
-  // 사용자가 붙여넣은 코드에서 'GasiGasiBaekMinju' 같은 폰트 이름을 자동 추출하는 마법의 함수!
   function extractFontFamily(cssText) {
     const match = cssText.match(/font-family\s*:\s*['"]?([^'";\n]+)['"]?/i);
     return match ? match[1].trim() : null;
   }
 
-   // 화면에 폰트 CSS를 뿌려주는 핵심 함수
   async function applyFontGroup() {
     const roomId = getCurrentRoomId();
     const [allFonts, roomConfig] = await Promise.all([
@@ -7127,12 +7147,10 @@
 
     let finalCSS = '';
 
-    // 1. 등록된 모든 @font-face를 페이지에 보이지 않게 로드 (글로벌 장전)
     allFonts.forEach(font => {
       finalCSS += font.css + '\n';
     });
 
-    // 2. 현재 방에 설정된 구역별 폰트 맵핑 적용 (발사)
     if (roomConfig) {
       if (roomConfig.body) {
         finalCSS += `
@@ -7151,7 +7169,6 @@
           }
         `;
       } else if (roomConfig.body) {
-        // 코드 블록이 기본 폰트(설정 안함)일 때, 본문 폰트 상속을 막고 뤼튼 기본값으로 원상복구
         finalCSS += `
           .wrtn-codeblock pre, .wrtn-codeblock code,
           .wrtn-codeblock .shiki span, .wrtn-codeblock div > span {
@@ -7171,22 +7188,143 @@
     styleEl.innerHTML = finalCSS;
   }
 
-  // 설정창 UI 생성 함수
-  async function injectFontThemeUI() {
-    const panelBody = document.querySelector('.crack-ui-panel-body');
-    if (!panelBody || document.querySelector('[data-crack-ui-section="font"]')) return;
+  // --- 폰트 UI용 동적 스타일 주입 ---
+  function ensureFontModuleStyles() {
+    if (document.getElementById('crack-ui-font-module-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'crack-ui-font-module-styles';
+    style.textContent = `
+      .crack-ui-font-chip {
+        display: flex;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.15);
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        color: #fff;
+        gap: 6px;
+      }
+      html[data-theme="light"] .crack-ui-font-chip,
+      body[data-theme="light"] .crack-ui-font-chip {
+        background: rgba(17, 24, 39, 0.08);
+        color: rgba(17, 24, 39, 0.94);
+      }
+      .crack-ui-font-del-btn {
+        background: none;
+        border: none;
+        color: #FF6B6B;
+        cursor: pointer;
+        font-weight: bold;
+        padding: 0;
+      }
+      html[data-theme="light"] .crack-ui-font-del-btn:hover,
+      body[data-theme="light"] .crack-ui-font-del-btn:hover {
+        color: #E53E3E;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // --- 방 이동 시 UI를 최신화하는 함수 ---
+  async function syncFontUI() {
+    const chipsContainer = document.getElementById('crack-ui-font-chips');
+    const selBody = document.getElementById('crack-ui-font-sel-body');
+    const selCode = document.getElementById('crack-ui-font-sel-code');
+    const selTitle = document.getElementById('crack-ui-font-sel-title');
+
+    if (!chipsContainer || !selBody) return;
 
     const roomId = getCurrentRoomId();
+    const [allFonts, roomConfig] = await Promise.all([
+      FontDB.getAllFonts(),
+      FontDB.getRoomConfig(roomId)
+    ]);
+    const config = roomConfig || { roomId, body: '', code: '', title: '' };
 
-    let allFonts = await FontDB.getAllFonts();
+    chipsContainer.innerHTML = '';
+    if (allFonts.length === 0) {
+      chipsContainer.innerHTML = '<span class="crack-ui-row-desc" style="font-size:11px;">등록된 폰트가 없습니다.</span>';
+    } else {
+      allFonts.forEach(f => {
+        const chip = document.createElement('div');
+        chip.className = 'crack-ui-font-chip';
+        chip.innerHTML = `
+          <span>${f.name}</span>
+          <button type="button" class="crack-ui-font-del-btn" title="삭제">×</button>
+        `;
+
+        // 삭제 버튼 클릭 이벤트 안전성 대폭 강화
+        chip.querySelector('.crack-ui-font-del-btn').addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          if(window.confirm(`'${f.name}' 폰트를 보관함에서 삭제하시겠습니까?`)) {
+            try {
+              await FontDB.deleteFont(f.id);
+
+              const currentRoomId = getCurrentRoomId();
+              let currentConfig = await FontDB.getRoomConfig(currentRoomId);
+              if (currentConfig) {
+                let updated = false;
+                if (currentConfig.body === f.name) { currentConfig.body = ''; updated = true; }
+                if (currentConfig.code === f.name) { currentConfig.code = ''; updated = true; }
+                if (currentConfig.title === f.name) { currentConfig.title = ''; updated = true; }
+                if (updated) await FontDB.saveRoomConfig(currentConfig);
+              }
+
+              await applyFontGroup();
+              await syncFontUI(); // 즉시 UI 새로고침
+            } catch (err) {
+              console.error("[Crack UI Font] 삭제 오류:", err);
+              alert("폰트 삭제 중 오류가 발생했습니다.");
+            }
+          }
+        });
+        chipsContainer.appendChild(chip);
+      });
+    }
+
+    const optionsHtml = `<option value="">기본</option>` +
+      allFonts.map(f => `<option value="${f.name}">${f.name}</option>`).join('');
+
+    selBody.innerHTML = optionsHtml;
+    selCode.innerHTML = optionsHtml;
+    selTitle.innerHTML = optionsHtml;
+
+    selBody.value = config.body || '';
+    selCode.value = config.code || '';
+    selTitle.value = config.title || '';
+  }
+
+  // --- 저장 이벤트 ---
+  async function handleSelectChange() {
+    const roomId = getCurrentRoomId();
     let roomConfig = (await FontDB.getRoomConfig(roomId)) || { roomId, body: '', code: '', title: '' };
+
+    roomConfig.body = document.getElementById('crack-ui-font-sel-body').value;
+    roomConfig.code = document.getElementById('crack-ui-font-sel-code').value;
+    roomConfig.title = document.getElementById('crack-ui-font-sel-title').value;
+
+    await FontDB.saveRoomConfig(roomConfig);
+    applyFontGroup();
+  }
+
+  // --- UI 최초 생성 함수 ---
+  function injectFontThemeUI() {
+    ensureFontModuleStyles();
+    const panelBody = document.querySelector('.crack-ui-panel-body');
+    if (!panelBody) return;
+
+    if (document.querySelector('[data-crack-ui-section="font"]')) {
+      syncFontUI();
+      return;
+    }
+
+    const savedFontOpen = localStorage.getItem('crack_ui_section_font_open') === '1';
 
     const fontSection = document.createElement('div');
     fontSection.className = 'crack-ui-section';
     fontSection.dataset.crackUiSection = 'font';
-
-    // 폰트 탭 열림/닫힘 상태 불러오기
-    const savedFontOpen = localStorage.getItem('crack_ui_section_font_open') === '1';
     fontSection.dataset.open = savedFontOpen ? '1' : '0';
 
     fontSection.innerHTML = `
@@ -7198,21 +7336,17 @@
       </button>
 
       <div class="crack-ui-section-body" data-crack-ui-section-body="font" ${savedFontOpen ? '' : 'hidden'}>
-        <!-- 1. 폰트 보관함 (전역) -->
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
             <span class="crack-ui-choice-title">폰트 보관함</span>
           </div>
 
-          <div id="crack-ui-font-chips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
-            <!-- 등록된 폰트 칩(이름표)이 여기에 표시됩니다 -->
-          </div>
+          <div id="crack-ui-font-chips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;"></div>
 
           <textarea id="crack-ui-font-add-css" class="crack-ui-font-input crack-ui-font-textarea" style="min-height: 50px; font-size:11px;" placeholder="@font-face {"></textarea>
-          <button type="button" class="crack-ui-btn crack-ui-btn-danger" id="crack-ui-font-add-btn" style="padding: 6px; margin-top: 4px; background: rgba(255,255,255,0.1); border:none; color:#fff;">+ 보관함에 폰트 등록</button>
+          <button type="button" class="crack-ui-btn crack-ui-btn-danger" id="crack-ui-font-add-btn" style="padding: 6px; margin-top: 4px;">등록</button>
         </div>
 
-        <!-- 2. 현재 방 폰트 적용 (개별 맵핑) -->
         <div class="crack-ui-choice-group">
           <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
             <span class="crack-ui-choice-title">채팅방 폰트 설정</span>
@@ -7238,7 +7372,6 @@
 
     panelBody.appendChild(fontSection);
 
-    // 아코디언 토글 이벤트 (상태 저장 포함)
     const toggleBtn = fontSection.querySelector('[data-crack-ui-section-toggle="font"]');
     const sectionBody = fontSection.querySelector('[data-crack-ui-section-body="font"]');
     toggleBtn.addEventListener('click', (e) => {
@@ -7248,75 +7381,15 @@
       fontSection.dataset.open = isOpen ? '0' : '1';
       toggleBtn.setAttribute('aria-expanded', !isOpen);
       sectionBody.hidden = isOpen;
-
-      // 상태를 기억장치에 저장
       localStorage.setItem('crack_ui_section_font_open', fontSection.dataset.open);
       try { positionPanel(); } catch {}
     });
 
-    const chipsContainer = document.getElementById('crack-ui-font-chips');
-    const addCssInput = document.getElementById('crack-ui-font-add-css');
     const addBtn = document.getElementById('crack-ui-font-add-btn');
+    const addCssInput = document.getElementById('crack-ui-font-add-css');
 
-    const selBody = document.getElementById('crack-ui-font-sel-body');
-    const selCode = document.getElementById('crack-ui-font-sel-code');
-    const selTitle = document.getElementById('crack-ui-font-sel-title');
-
-    // 화면 갱신 로직 (폰트 목록과 드롭다운을 그림)
-    function renderUI() {
-      // 1. 보관함 칩 렌더링
-      chipsContainer.innerHTML = '';
-      if (allFonts.length === 0) {
-        chipsContainer.innerHTML = '<span class="crack-ui-row-desc" style="font-size:11px;">등록된 폰트가 없습니다.</span>';
-      } else {
-        allFonts.forEach(f => {
-          const chip = document.createElement('div');
-          chip.style.cssText = 'display:flex; align-items:center; background:rgba(255,255,255,0.15); padding:4px 8px; border-radius:12px; font-size:11px; color:#fff; gap:6px;';
-          chip.innerHTML = `
-            <span>${f.name}</span>
-            <button class="crack-ui-font-del-btn" title="삭제" style="background:none; border:none; color:#FF6B6B; cursor:pointer; font-weight:bold; padding:0;">×</button>
-          `;
-
-          // 삭제 버튼 로직
-          chip.querySelector('.crack-ui-font-del-btn').addEventListener('click', async () => {
-            if(confirm(`'${f.name}' 폰트를 보관함에서 삭제하시겠습니까?`)) {
-              await FontDB.deleteFont(f.id);
-
-              // 현재 방에서 사용 중이던 폰트면 해제
-              if(roomConfig.body === f.name) roomConfig.body = '';
-              if(roomConfig.code === f.name) roomConfig.code = '';
-              if(roomConfig.title === f.name) roomConfig.title = '';
-              await FontDB.saveRoomConfig(roomConfig);
-
-              allFonts = await FontDB.getAllFonts();
-              renderUI();
-              applyFontGroup(); // 즉시 해제 반영
-            }
-          });
-          chipsContainer.appendChild(chip);
-        });
-      }
-
-      // 2. 드롭다운 옵션 렌더링
-      const optionsHtml = `<option value="">(기본 폰트 사용)</option>` +
-        allFonts.map(f => `<option value="${f.name}">${f.name}</option>`).join('');
-
-      selBody.innerHTML = optionsHtml;
-      selCode.innerHTML = optionsHtml;
-      selTitle.innerHTML = optionsHtml;
-
-      // 3. 현재 저장된 설정값으로 선택 고정
-      selBody.value = roomConfig.body || '';
-      selCode.value = roomConfig.code || '';
-      selTitle.value = roomConfig.title || '';
-
-      setTimeout(() => { try { positionPanel(); } catch {} }, 50);
-    }
-
-    renderUI();
-
-    // 폰트 등록 로직 (자동 추출 마법)
-    addBtn.addEventListener('click', async () => {
+    addBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
       const cssText = addCssInput.value.trim();
       if (!cssText) return alert('눈누 등에서 복사한 @font-face 코드를 입력해주세요.');
 
@@ -7327,37 +7400,37 @@
 
       const fontData = {
         id: 'font_' + Date.now(),
-        name: fontName, // 자동 추출된 이름!
+        name: fontName,
         css: cssText
       };
 
-      await FontDB.saveFont(fontData);
-      addCssInput.value = ''; // 입력창 비우기
-
-      allFonts = await FontDB.getAllFonts();
-      renderUI(); // 칩과 드롭다운 갱신
-      applyFontGroup(); // 글로벌 폰트 장전
+      try {
+        await FontDB.saveFont(fontData);
+        addCssInput.value = '';
+        await applyFontGroup();
+        await syncFontUI();
+      } catch (err) {
+        console.error("[Crack UI Font] 저장 오류:", err);
+        alert("폰트 저장 중 오류가 발생했습니다.");
+      }
     });
 
-    // 드롭다운 변경 시 "저장 버튼 없이" 즉시 적용 (실시간 반영 UX)
-    async function handleSelectChange() {
-      roomConfig.body = selBody.value;
-      roomConfig.code = selCode.value;
-      roomConfig.title = selTitle.value;
-
-      await FontDB.saveRoomConfig(roomConfig);
-      applyFontGroup(); // 화면 글씨체가 실시간으로 바뀜!
-    }
+    const selBody = document.getElementById('crack-ui-font-sel-body');
+    const selCode = document.getElementById('crack-ui-font-sel-code');
+    const selTitle = document.getElementById('crack-ui-font-sel-title');
 
     selBody.addEventListener('change', handleSelectChange);
     selCode.addEventListener('change', handleSelectChange);
     selTitle.addEventListener('change', handleSelectChange);
+
+    syncFontUI();
   }
 
   const panelObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       if (mutation.target.id === ID.panel && mutation.target.dataset.open === '1') {
         injectFontThemeUI();
+        syncFontUI();
       }
     });
   });
@@ -7372,18 +7445,16 @@
     observeThemeDomGuard();
     observe();
 
-    // Font Extension Init
     applyFontGroup();
     const panel = document.getElementById(ID.panel);
     if (panel) panelObserver.observe(panel, { attributes: true, attributeFilter: ['data-open'] });
 
-    // React SPA 방 이동 감지 (URL 변경 시 폰트 재적용 및 UI 갱신)
     let lastUrl = location.href;
     new MutationObserver(() => {
       if (location.href !== lastUrl) {
         lastUrl = location.href;
         applyFontGroup();
-        injectFontThemeUI();
+        syncFontUI();
       }
     }).observe(document, { subtree: true, childList: true });
   });
