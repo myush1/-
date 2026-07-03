@@ -7366,7 +7366,7 @@
           </div>
 
           <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">코드블록</div>
+            <div class="crack-ui-row-desc">코드블럭</div>
             <select id="crack-ui-font-sel-code" class="crack-ui-font-select"></select>
           </div>
 
