@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         Crack UI Plus (with Custom Font Module)
+// @name         Crack UI Plus (채팅방 제목 고정)
 // @namespace    https://github.com/Dflashh/Crack
-// @version      2.1.1-font-addon
-// @description  Crack을 더 가볍고 편하게 + 다국어 커스텀 폰트/테마 지원
+// @version      2.2.0.1
+// @description  Crack을 더 가볍고 편하게
 // @match        *://crack.wrtn.ai/*
-// @author       깡통들과 나 & Custom Font Addon
+// @author       깡통들과 나
 // @run-at       document-start
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
@@ -16,7 +16,7 @@
 (() => {
   'use strict';
 
-  const CRACK_UI_VERSION = '2.1.1';
+  const CRACK_UI_VERSION = '2.2.0';
 
   function getCrackUiPublicWindow() {
     try {
@@ -71,6 +71,7 @@
     bottomModelPopup: 'crack-ui-bottom-model-popup',
     visibleModelDisclosure: 'crack-ui-visible-model-disclosure',
     visibleModelPanel: 'crack-ui-visible-model-panel',
+    officialModelVisibilityStyle: 'crack-ui-official-model-visibility-style',
     roomMenuZone: 'crack-ui-room-menu-zone',
     roomMenuHandle: 'crack-ui-room-menu-handle',
     toggleRoomMenuHandle: 'crack-ui-toggle-room-menu-handle',
@@ -99,11 +100,10 @@
     emptySendGuard: 'crack_ui_empty_send_guard',
     hideSituationImage: 'crack_ui_hide_situation_image',
     bottomModelVisibleModels: 'crack_ui_bottom_model_visible_models',
+    bottomModelRegistry: 'crack_ui_bottom_model_registry_v1',
     bottomModelVisibleModelsOpen: 'crack_ui_bottom_model_visible_models_open',
     roomMenuHandle: 'crack_ui_room_menu_handle',
     chatListAutoHide: 'crack_ui_chat_list_auto_hide',
-    bodyFontSizeOffset: 'crack_ui_body_font_size_offset',
-    codeFontSizeOffset: 'crack_ui_code_font_size_offset',
   };
 
   const CLS = {
@@ -334,21 +334,6 @@
   let displaySectionOpen = loadSectionOpen(LS.sectionDisplayOpen, true);
   let themeSectionOpen = loadSectionOpen(LS.sectionThemeOpen, true);
   let chatSectionOpen = loadSectionOpen(LS.sectionChatOpen, true);
-  function clampFontSizeOffset(value) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return 0;
-    return Math.min(50, Math.max(-50, Math.round(n)));
-  }
-
-  function loadFontSizeOffset(key) {
-    const raw = readStorage(key);
-    if (raw != null) return clampFontSizeOffset(raw);
-    return 0;
-  }
-
-  let bodyFontSizeOffset = loadFontSizeOffset(LS.bodyFontSizeOffset);
-  let codeFontSizeOffset = loadFontSizeOffset(LS.codeFontSizeOffset);
-  let fontSizeSaveTimer = null;
 
   let panelOpen = false;
   let pointerOnZone = false;
@@ -380,6 +365,8 @@
   let initThrottleTimer = null;
   let pendingThemeApplied = false;
   let cachedBottomSendButton = null;
+  let cachedComposerEditable = null;
+  let emptySendGuardUiRaf = 0;
   let cachedOriginalModelButton = null;
   let cachedRoomMenuButton = null;
   let cachedChatListPanel = null;
@@ -391,6 +378,7 @@
   let situationImageMarkRaf = 0;
   let situationImageLastScanAt = 0;
   let cachedRoomTopBar = null;
+  let cachedRoomStatBar = null;
   let lastRoomTopBarInputInteractionAt = 0;
   let roomPanelCloseTimer = null;
   let lastRoomPanelClickAt = 0;
@@ -442,8 +430,6 @@
         --crack-ui-img-size: ${imageSize}%;
         --crack-ui-chat-width: ${getCssWidthFromPercent(chatWidthPercent)};
         --crack-ui-scroll-button-offset: ${getCssScrollButtonOffsetFromPercent(chatWidthPercent)};
-        --crack-ui-body-font-offset: ${bodyFontSizeOffset};
-        --crack-ui-code-font-offset: ${codeFontSizeOffset};
       }
 
       #${ID.zone} {
@@ -603,6 +589,10 @@
           transform 160ms ease !important;
       }
 
+      html.${CLS.roomTopBarHidden} [data-crack-ui-room-stat-bar="1"] {
+        transform: translateY(-3rem) !important;
+      }
+
       html.${CLS.pinRoomTopBar} [data-crack-ui-room-top-bar="1"],
       html.${CLS.pinRoomTopBar} .group\\/header > div.absolute.z-\\[5\\] {
         opacity: 1 !important;
@@ -627,8 +617,8 @@
         padding-top: 0 !important;
       }
 
-      html.${CLS.autoHide} body .pt-\\[120px\\],
-      html.${CLS.autoHide} body .md\\:pt-\\[56px\\],
+      html.${CLS.autoHide} body .pt-\[120px\],
+      html.${CLS.autoHide} body .md\:pt-\[56px\],
       html.${CLS.autoHide} body [class*="pt-[120px]"],
       html.${CLS.autoHide} body [class*="md:pt-[56px]"] {
         padding-top: 0 !important;
@@ -683,27 +673,7 @@
         transform: translateY(0) !important;
         box-shadow: 0 12px 34px rgba(0, 0, 0, .24) !important;
       }
-      /* 폰트 사이즈 실시간 조절 강제 적용 */
-      .wrtn-markdown,
-      .wrtn-markdown p,
-      .wrtn-markdown span:not(.wrtn-codeblock *),
-      .wrtn-markdown div:not(.wrtn-codeblock *),
-      .wrtn-markdown em,
-      .wrtn-markdown strong,
-      .wrtn-markdown b,
-      .wrtn-markdown blockquote,
-      .wrtn-markdown li {
-        font-size: calc(1rem * (1 + (var(--crack-ui-body-font-offset, 0) / 100))) !important;
-        line-height: 1.6 !important;
-      }
 
-      .wrtn-codeblock pre,
-      .wrtn-codeblock code,
-      .wrtn-codeblock .shiki span,
-      .wrtn-codeblock div > span {
-        font-size: calc(0.875rem * (1 + (var(--crack-ui-code-font-offset, 0) / 100))) !important;
-        line-height: 1.5 !important;
-      }
       .wrtn-markdown img,
       [class*="wrtn-markdown"] img,
       .markdown-body img {
@@ -1637,6 +1607,15 @@
         object-fit: cover !important;
       }
 
+      [role="menuitem"][data-crack-ui-official-model-hidden="1"] {
+        display: none !important;
+      }
+
+      /* Crack 원본 모델 메뉴의 모델별 설명문은 UI+ 활성화 시 항상 숨김. */
+      [data-radix-popper-content-wrapper] [role="menu"] [role="menuitem"]:has(img[src*="model-icon"]) > div:first-child > div[class*="text-text_secondary"] {
+        display: none !important;
+      }
+
       .crack-ui-model-option-main {
         display: flex;
         align-items: center;
@@ -2198,116 +2177,6 @@
           min-width: 26px !important;
         }
       }
-     /* === Font Template Editor UI === */
-      .crack-ui-font-input {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 8px 10px;
-        margin-top: 4px;
-        background: rgba(0, 0, 0, .42);
-        border: 1px solid rgba(255, 255, 255, .07);
-        border-radius: 12px;
-        color: rgba(255, 255, 255, .96);
-        font-size: 12px;
-        font-family: inherit;
-        outline: none;
-        transition: border-color 130ms ease;
-      }
-      body[data-theme="light"] .crack-ui-font-input,
-      html[data-theme="light"] .crack-ui-font-input {
-        background: rgba(255, 255, 255, .72);
-        border-color: rgba(17, 24, 39, .075);
-        color: rgba(17, 24, 39, .94);
-      }
-      .crack-ui-font-input:focus {
-        border-color: #FE4532;
-      }
-      .crack-ui-font-textarea {
-        resize: vertical;
-        min-height: 60px;
-      }
-      .crack-ui-template-edit-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: none;
-        color: rgba(255, 255, 255, .54);
-        cursor: pointer;
-        padding: 4px;
-        border-radius: 6px;
-        transition: all 130ms ease;
-      }
-      .crack-ui-template-edit-btn:hover {
-        color: #FE4532;
-        background: rgba(255, 255, 255, .1);
-      }
-      body[data-theme="light"] .crack-ui-template-edit-btn {
-         color: rgba(17, 24, 39, .54);
-      }
-      body[data-theme="light"] .crack-ui-template-edit-btn:hover {
-         color: #FE4532;
-         background: rgba(17, 24, 39, .05);
-      }
-      .crack-ui-btn-group {
-        display: flex;
-        gap: 8px;
-        margin-top: 12px;
-      }
-      .crack-ui-btn {
-        flex: 1;
-        padding: 8px;
-        border-radius: 12px;
-        border: none;
-        font-size: 12px;
-        font-weight: 800;
-        cursor: pointer;
-        transition: background-color 130ms ease;
-      }
-      .crack-ui-btn-primary {
-        background: rgba(254, 69, 50, .14);
-        color: #FE4532;
-        border: 1px solid rgba(254, 69, 50, .46);
-      }
-      .crack-ui-btn-primary:hover { background: rgba(254, 69, 50, .24); }
-      .crack-ui-btn-danger {
-        background: rgba(255, 255, 255, .05);
-        color: rgba(255, 255, 255, .8);
-        border: 1px solid rgba(255, 255, 255, .1);
-      }
-      .crack-ui-btn-danger:hover { background: rgba(255, 50, 50, .15); color: #FF6B6B; border-color: rgba(255, 50, 50, .3); }
-      body[data-theme="light"] .crack-ui-btn-danger {
-        background: rgba(17, 24, 39, .05);
-        color: rgba(17, 24, 39, .8);
-        border-color: rgba(17, 24, 39, .1);
-      }
-
-      .crack-ui-font-select {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 8px 10px;
-        margin-top: 4px;
-        background: rgba(0, 0, 0, .42);
-        border: 1px solid rgba(255, 255, 255, .07);
-        border-radius: 12px;
-        color: rgba(255, 255, 255, .96);
-        font-size: 12px;
-        font-family: inherit;
-        outline: none;
-        cursor: pointer;
-        transition: border-color 130ms ease;
-      }
-
-      body[data-theme="light"] .crack-ui-font-select,
-      html[data-theme="light"] .crack-ui-font-select {
-        background: rgba(255, 255, 255, .72);
-        border-color: rgba(17, 24, 39, .075);
-        color: rgba(17, 24, 39, .94);
-      }
-
-      .crack-ui-font-select:focus {
-        border-color: #FE4532;
-      }
     `;
     if (typeof GM_addStyle === 'function') {
       GM_addStyle(css);
@@ -2391,13 +2260,13 @@
 
     root.classList.toggle('dark', resolved === 'dark');
     root.classList.toggle('light', resolved === 'light');
-    root.dataset.theme = resolved;
-    root.dataset.crackUiThemeMode = resolved;
-    root.style.colorScheme = resolved;
+    if (root.dataset.theme !== resolved) root.dataset.theme = resolved;
+    if (root.dataset.crackUiThemeMode !== resolved) root.dataset.crackUiThemeMode = resolved;
+    if (root.style.colorScheme !== resolved) root.style.colorScheme = resolved;
 
     if (body) {
-      body.dataset.theme = resolved;
-      body.style.colorScheme = resolved;
+      if (body.dataset.theme !== resolved) body.dataset.theme = resolved;
+      if (body.style.colorScheme !== resolved) body.style.colorScheme = resolved;
     }
   }
 
@@ -3212,25 +3081,7 @@
   function applyImageSize() {
     document.documentElement.style.setProperty('--crack-ui-img-size', `${imageSize}%`);
   }
-  function applyFontSizes() {
-    document.documentElement.style.setProperty('--crack-ui-body-font-offset', bodyFontSizeOffset);
-    document.documentElement.style.setProperty('--crack-ui-code-font-offset', codeFontSizeOffset);
-  }
 
-  function saveFontSizesSoon() {
-    clearTimeout(fontSizeSaveTimer);
-    fontSizeSaveTimer = setTimeout(() => {
-      writeStorage(LS.bodyFontSizeOffset, bodyFontSizeOffset);
-      writeStorage(LS.codeFontSizeOffset, codeFontSizeOffset);
-      fontSizeSaveTimer = null;
-    }, 120);
-  }
-
-  function formatFontSizeDisplay(val) {
-    const n = clampFontSizeOffset(val);
-    if (n === 0) return '기본';
-    return n > 0 ? `+${n}%` : `${n}%`;
-  }
   function applyChatWidth() {
     const customWidth = clampChatWidthPercent(chatWidthPercent) !== 0;
     const supported = isChatWidthSupportedViewport();
@@ -4110,7 +3961,7 @@
     updateThemeUi();
     updateChatListAutoHideUi();
 
-   bindCheckbox(panel, ID.toggleHeader, autoHideHeader, (checked) => {
+    bindCheckbox(panel, ID.toggleHeader, autoHideHeader, (checked) => {
       autoHideHeader = checked;
       writeStorage(LS.autoHideHeader, autoHideHeader ? '1' : '0');
 
@@ -4124,7 +3975,6 @@
 
       applyState();
     });
-
     bindCheckbox(panel, ID.togglePinRoomTopBar, pinRoomTopBar, (checked) => {
       pinRoomTopBar = checked;
       writeStorage(LS.pinRoomTopBar, pinRoomTopBar ? '1' : '0');
@@ -4316,7 +4166,7 @@
 
   function applyState() {
     updateDeviceViewportClasses();
-    markStatBars();
+    if (hideStatBar) markStatBars();
     scheduleSituationImageButtonMark({ immediate: hideSituationImage });
     document.documentElement.classList.toggle(CLS.autoHide, autoHideHeader);
     document.documentElement.classList.toggle(CLS.pinRoomTopBar, pinRoomTopBar);
@@ -4485,8 +4335,39 @@
     return true;
   }
 
+  function isDirectChatComposerEditable(editable) {
+    if (!editable?.isConnected || !crackUiIsChatRoute()) return false;
+    if (editable.matches?.('.__chat_input_textarea[contenteditable="true"]')) return true;
+
+    const placeholder = normalizeText(
+      editable.getAttribute?.('data-placeholder') || editable.getAttribute?.('placeholder') || ''
+    );
+    return placeholder === '메시지 보내기' &&
+      !!editable.matches?.('textarea, [contenteditable="true"], [role="textbox"]');
+  }
+
   function findChatComposerEditable() {
+    if (!crackUiIsChatRoute()) {
+      cachedComposerEditable = null;
+      return null;
+    }
+
     const sendButton = DOM.sendButton();
+
+    if (cachedComposerEditable?.isConnected) {
+      if (isDirectChatComposerEditable(cachedComposerEditable)) return cachedComposerEditable;
+      if (isComposerEditableCandidate(cachedComposerEditable, sendButton)) return cachedComposerEditable;
+    }
+    cachedComposerEditable = null;
+
+    const direct = document.querySelector(
+      '.__chat_input_textarea[contenteditable="true"], [contenteditable="true"][data-placeholder="메시지 보내기"], textarea[placeholder="메시지 보내기"]'
+    );
+    if (direct && isComposerEditableCandidate(direct, sendButton)) {
+      cachedComposerEditable = direct;
+      return direct;
+    }
+
     const roots = [];
     let node = sendButton?.parentElement || null;
     for (let i = 0; node && i < 7; i += 1) {
@@ -4523,7 +4404,8 @@
     });
 
     candidates.sort((a, b) => b.score - a.score);
-    return candidates[0]?.editable || null;
+    cachedComposerEditable = candidates[0]?.editable || null;
+    return cachedComposerEditable;
   }
 
   function isComposerEmptyForSend() {
@@ -4567,11 +4449,28 @@
     stopEmptySendEvent(e);
   }
 
+  function getFocusedComposerEditableForEnterEvent(e) {
+    const editable = DOM.composerEditable();
+    if (!editable?.isConnected) return null;
+
+    const target = e.target?.nodeType === 1 ? e.target : e.target?.parentElement;
+    const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    const eventFromComposer = target === editable || editable.contains?.(target) || path.includes(editable);
+    if (!eventFromComposer) return null;
+
+    const active = document.activeElement;
+    const composerFocused = active === editable || editable.contains?.(active);
+    return composerFocused ? editable : null;
+  }
+
   function guardEmptyComposerEnterEvent(e) {
     if (!emptySendGuard || !crackUiIsChatRoute()) return;
     if (e.key !== 'Enter' || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;
-    if (!isChatComposerTarget(e.target)) return;
-    if (!shouldBlockEmptyComposerSend()) return;
+
+    const editable = getFocusedComposerEditableForEnterEvent(e);
+    if (!editable) return;
+    if (normalizeComposerText(getEditableText(editable)).length !== 0) return;
+
     stopEmptySendEvent(e);
   }
 
@@ -4601,7 +4500,11 @@
   }
 
   function scheduleEmptySendGuardUiUpdate() {
-    requestAnimationFrame(applyEmptySendGuardState);
+    if (emptySendGuardUiRaf) return;
+    emptySendGuardUiRaf = requestAnimationFrame(() => {
+      emptySendGuardUiRaf = 0;
+      applyEmptySendGuardState();
+    });
   }
 
 
@@ -4609,7 +4512,10 @@
   // Feature: bottom model picker
   // =====================================================
 
-  const CHAT_MODEL_INFO = {
+  const DEFAULT_CHAT_MODEL_INFO = {
+    '페이블챗 1.0': {
+      image: 'https://cdn-image.wrtn.ai/crack/graphics/model-icon/fablechat1_0.webp',
+    },
     '하이퍼챗 2.0': {
       image: 'https://cdn-image.wrtn.ai/crack/graphics/model-icon/hyperchat2_0.webp',
     },
@@ -4618,6 +4524,9 @@
     },
     '하이퍼챗 1.0': {
       image: 'https://cdn-image.wrtn.ai/crack/graphics/model-icon/hyperchat.webp',
+    },
+    '슈퍼챗 3.0': {
+      image: 'https://cdn-image.wrtn.ai/crack/graphics/model-icon/superchat3_0.webp',
     },
     '슈퍼챗 2.5': {
       image: 'https://cdn-image.wrtn.ai/crack/graphics/model-icon/superchat2_5.webp',
@@ -4636,18 +4545,87 @@
     },
   };
 
-  const CHAT_MODEL_ORDER = Object.keys(CHAT_MODEL_INFO);
+  function cloneDefaultChatModelInfo() {
+    return Object.fromEntries(
+      Object.entries(DEFAULT_CHAT_MODEL_INFO).map(([name, info]) => [name, { ...info }])
+    );
+  }
 
-  const CHAT_MODEL_ICON_MAP = {
-    'hyperchat2_0.webp': '하이퍼챗 2.0',
-    'hyperchat1_5.webp': '하이퍼챗 1.5',
-    'hyperchat.webp': '하이퍼챗 1.0',
-    'superchat2_5.webp': '슈퍼챗 2.5',
-    'superchat2_0.webp': '슈퍼챗 2.0',
-    'prochat2_5.webp': '프로챗 2.5',
-    'prochat1_0.webp': '프로챗 1.0',
-    'powerchat.webp': '파워챗',
-  };
+  function getModelIconFileFromUrl(value) {
+    let text = String(value || '').trim();
+    if (!text) return '';
+
+    // Next 이미지 최적화 URL처럼 원본 model-icon 경로가 쿼리 안에 들어간 경우도 복원한다.
+    for (let i = 0; i < 2; i += 1) {
+      try {
+        const decoded = decodeURIComponent(text);
+        if (decoded === text) break;
+        text = decoded;
+      } catch {
+        break;
+      }
+    }
+
+    const nested = text.match(/model-icon\/([^/?#"'<>\s]+\.(?:webp|png|svg|avif))/i);
+    if (nested?.[1]) return nested[1];
+
+    return text.split(/[?#]/)[0].split('/').pop() || '';
+  }
+
+  function buildChatModelIconMap(infoMap) {
+    const map = {};
+    for (const [name, info] of Object.entries(infoMap || {})) {
+      const file = getModelIconFileFromUrl(info?.image);
+      if (file) map[file] = name;
+    }
+    return map;
+  }
+
+  function loadChatModelRegistry() {
+    const raw = readStorage(LS.bottomModelRegistry);
+    if (!raw) return cloneDefaultChatModelInfo();
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return cloneDefaultChatModelInfo();
+
+      const next = {};
+      for (const entry of parsed) {
+        const name = normalizeText(entry?.name);
+        const image = String(entry?.image || '').trim();
+        if (!name || !image.includes('model-icon')) continue;
+        if (!Object.prototype.hasOwnProperty.call(next, name)) next[name] = { image };
+      }
+
+      return Object.keys(next).length ? next : cloneDefaultChatModelInfo();
+    } catch {
+      return cloneDefaultChatModelInfo();
+    }
+  }
+
+  let CHAT_MODEL_INFO = loadChatModelRegistry();
+  let CHAT_MODEL_ORDER = Object.keys(CHAT_MODEL_INFO);
+  let CHAT_MODEL_ICON_MAP = buildChatModelIconMap(CHAT_MODEL_INFO);
+
+  function saveChatModelRegistry() {
+    writeJsonStorage(
+      LS.bottomModelRegistry,
+      CHAT_MODEL_ORDER.map((name) => ({
+        name,
+        image: String(CHAT_MODEL_INFO[name]?.image || ''),
+      }))
+    );
+  }
+
+  function escapeModelHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[ch] || ch));
+  }
 
   function loadVisibleChatModelNames() {
     const raw = readStorage(LS.bottomModelVisibleModels);
@@ -4716,18 +4694,20 @@
     return CHAT_MODEL_ORDER.map((name) => {
       const selected = visible.has(name);
       const image = CHAT_MODEL_INFO[name]?.image || '';
+      const safeName = escapeModelHtml(name);
+      const safeImage = escapeModelHtml(image);
       return `
                 <button
                   type="button"
                   role="checkbox"
                   class="crack-ui-choice-row crack-ui-visible-model-row"
-                  data-crack-ui-visible-model="${name}"
+                  data-crack-ui-visible-model="${safeName}"
                   data-selected="${selected ? '1' : '0'}"
                   aria-checked="${selected ? 'true' : 'false'}"
                 >
                   <span class="crack-ui-choice-mark" aria-hidden="true"></span>
-                  <img class="crack-ui-visible-model-icon" src="${image}" alt="">
-                  <span class="crack-ui-choice-name">${name}</span>
+                  <img class="crack-ui-visible-model-icon" src="${safeImage}" alt="">
+                  <span class="crack-ui-choice-name">${safeName}</span>
                 </button>
       `;
     }).join('');
@@ -4743,6 +4723,24 @@
       button.setAttribute('aria-checked', selected ? 'true' : 'false');
     });
 
+  }
+
+  function refreshVisibleModelChoicesPanel() {
+    const panel = document.getElementById(ID.panel);
+    const list = panel?.querySelector?.('.crack-ui-visible-model-list');
+    if (!list) return;
+
+    const signature = CHAT_MODEL_ORDER
+      .map((name) => `${name}|${String(CHAT_MODEL_INFO[name]?.image || '')}`)
+      .join('\n');
+
+    if (list.dataset.crackUiModelRegistrySignature !== signature) {
+      list.innerHTML = renderVisibleModelChoicesHtml();
+      list.dataset.crackUiModelRegistrySignature = signature;
+      bindChoiceButtons(panel);
+    }
+
+    updateVisibleModelChoicesUi();
   }
 
   function toggleVisibleChatModel(name) {
@@ -4762,6 +4760,7 @@
 
     saveVisibleChatModelNames();
     updateVisibleModelChoicesUi();
+    syncOfficialModelVisibility();
 
     if (isBottomModelPopupOpen()) {
       renderBottomModelPopup(document.getElementById(ID.bottomModelButton), getStaticModelList());
@@ -4769,6 +4768,16 @@
   }
 
   let syncingOfficialModelInfo = false;
+  let lastOfficialModelVisibilityHiddenCount = 0;
+  let lastOfficialModelRegistryAdded = [];
+  let lastOfficialModelRegistryRemoved = [];
+  let lastOfficialModelRegistryCount = CHAT_MODEL_ORDER.length;
+  let lastOfficialModelRegistrySignature = '';
+  let pendingOfficialModelRegistryRemovalSignature = '';
+  let officialModelRegistryRemovalConfirmTimer = null;
+  let officialModelRegistryScanTimers = [];
+
+  const MODEL_REGISTRY_REMOVAL_CONFIRM_MS = 500;
 
   function modelSleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -4784,73 +4793,97 @@
     return rect.width > 0 && rect.height > 0;
   }
 
-  function getModelNameFromNode(node) {
+  function getModelIconSourceFromNode(node) {
+    if (!node) return '';
+    const icon = node.matches?.('img[src*="model-icon"], img[srcset*="model-icon"]')
+      ? node
+      : node.querySelector?.('img[src*="model-icon"], img[srcset*="model-icon"]');
+    if (!icon) return '';
+
+    const src = String(icon.currentSrc || icon.getAttribute?.('src') || icon.src || '').trim();
+    if (src) return src;
+
+    const srcset = String(icon.getAttribute?.('srcset') || '').trim();
+    return srcset.split(',')[0]?.trim().split(/\s+/)[0] || '';
+  }
+
+  function getRawModelNameFromNode(node) {
     if (!node) return '';
 
-    const imgAlt = normalizeText(node.querySelector?.('img[alt]')?.getAttribute('alt'));
-    if (isKnownChatModelName(imgAlt)) return imgAlt;
+    const icon = node.matches?.('img[src*="model-icon"], img[srcset*="model-icon"], img[alt]')
+      ? node
+      : node.querySelector?.('img[src*="model-icon"], img[srcset*="model-icon"], img[alt]');
 
-    const src = String(node.querySelector?.('img[src*="model-icon"]')?.getAttribute('src') || '');
-    const fromSrc = Object.entries(CHAT_MODEL_ICON_MAP).find(([file]) => src.includes(file));
-    if (fromSrc?.[1]) return fromSrc[1];
+    const imgAlt = normalizeText(icon?.getAttribute?.('alt'));
+    if (imgAlt) return imgAlt;
 
-    const spanText = [...(node.querySelectorAll?.('span') || [])]
+    const src = getModelIconSourceFromNode(node);
+    const fromSrc = CHAT_MODEL_ICON_MAP[getModelIconFileFromUrl(src)];
+    if (fromSrc) return fromSrc;
+
+    const row = icon?.closest?.('.flex.items-center, [class*="items-center"]') || node;
+    const spanText = [...(row.querySelectorAll?.('span') || [])]
       .map((span) => normalizeText(span.textContent))
-      .find(isKnownChatModelName);
+      .find((text) => text && text.length <= 40 && !/변경\s*예정|권장|\d+\s*개/.test(text));
     if (spanText) return spanText;
 
     const text = normalizeText(node.textContent);
     return CHAT_MODEL_ORDER.find((model) => text.includes(model)) || '';
   }
 
+  function getModelNameFromNode(node) {
+    return getRawModelNameFromNode(node);
+  }
+
   function getDisplayModelInfo(modelName) {
-    const name = isKnownChatModelName(modelName) ? modelName : '파워챗';
-    return {
-      name,
-      ...CHAT_MODEL_INFO[name],
-    };
+    const name = normalizeText(modelName);
+    if (isKnownChatModelName(name)) {
+      return {
+        name,
+        ...CHAT_MODEL_INFO[name],
+      };
+    }
+
+    return { name: name || '모델', image: '' };
   }
 
   function getCurrentModelName() {
     const officialButton = DOM.modelButton();
     const buttonName = getModelNameFromNode(officialButton);
-    if (isKnownChatModelName(buttonName)) return buttonName;
+    if (buttonName) return buttonName;
 
-    const icons = [...document.querySelectorAll('img[src*="model-icon"], img[alt]')];
+    const icons = [...document.querySelectorAll('img[src*="model-icon"], img[srcset*="model-icon"]')];
     for (const icon of icons) {
       if (icon.closest(`#${ID.bottomModelButton}, #${ID.bottomModelPopup}, #${ID.panel}, [role="menuitem"], [role="dialog"]`)) continue;
 
       const alt = normalizeText(icon.getAttribute('alt'));
-      if (isKnownChatModelName(alt)) return alt;
+      if (alt) return alt;
 
       const src = String(icon.getAttribute('src') || icon.src || '');
-      const fromSrc = Object.entries(CHAT_MODEL_ICON_MAP).find(([file]) => src.includes(file));
-      if (fromSrc?.[1]) return fromSrc[1];
-    }
-
-    const spans = [...document.querySelectorAll('span')];
-    for (const span of spans) {
-      if (span.closest(`#${ID.bottomModelButton}, #${ID.bottomModelPopup}, #${ID.panel}, [role="menuitem"], [role="dialog"]`)) continue;
-      const text = normalizeText(span.textContent);
-      if (isKnownChatModelName(text)) return text;
+      const fromSrc = CHAT_MODEL_ICON_MAP[getModelIconFileFromUrl(src)];
+      if (fromSrc) return fromSrc;
     }
 
     return '';
   }
 
   function getCurrentModelInfo() {
+    const officialButton = DOM.modelButton();
     const name = getCurrentModelName();
     if (isKnownChatModelName(name)) return getDisplayModelInfo(name);
-    return { name: '모델', image: '' };
+    return {
+      name: name || '모델',
+      image: getModelIconSourceFromNode(officialButton),
+    };
   }
 
   function isOriginalModelButtonCandidate(button, panel = document.getElementById(ID.panel), popup = document.getElementById(ID.bottomModelPopup)) {
     if (!button || button.id === ID.bottomModelButton || !button.isConnected) return false;
     if (panel?.contains(button) || popup?.contains(button)) return false;
-    if (!button.querySelector('img[alt], img[src*="model-icon"]')) return false;
+    const icon = button.querySelector('img[src*="model-icon"], img[srcset*="model-icon"]');
+    if (!icon) return false;
 
-    const name = getModelNameFromNode(button);
-    return isKnownChatModelName(name);
+    return !!getRawModelNameFromNode(button) || !!getModelIconSourceFromNode(button);
   }
 
   function findOriginalModelButton() {
@@ -4871,9 +4904,241 @@
   function getOfficialModelMenu() {
     const popup = document.getElementById(ID.bottomModelPopup);
     return [...document.querySelectorAll('[role="menu"]')].find((menu) => {
-      if (popup?.contains(menu)) return false;
-      return CHAT_MODEL_ORDER.some((model) => normalizeText(menu.textContent).includes(model));
+      if (popup?.contains(menu) || menu.closest?.(`#${ID.panel}`)) return false;
+      const modelItems = [...menu.querySelectorAll('[role="menuitem"]')]
+        .filter((item) => item.querySelector('img[src*="model-icon"], img[srcset*="model-icon"]'));
+      return modelItems.length >= 2;
     }) || null;
+  }
+
+  function scanOfficialModelMenuEntries(menu = DOM.modelMenu()) {
+    if (!menu) return [];
+
+    const modelItems = [...menu.querySelectorAll('[role="menuitem"]')]
+      .filter((item) => item.querySelector('img[src*="model-icon"], img[srcset*="model-icon"]'));
+    if (modelItems.length < 2) return [];
+
+    const entries = [];
+    const seenNames = new Set();
+
+    for (const item of modelItems) {
+      const image = getModelIconSourceFromNode(item);
+      const name = normalizeText(getRawModelNameFromNode(item));
+      const iconFile = getModelIconFileFromUrl(image);
+      if (!name || !image || !iconFile || seenNames.has(name)) continue;
+      seenNames.add(name);
+      entries.push({ name, image });
+    }
+
+    // 메뉴가 덜 렌더된 순간의 부분 스캔으로 기존 모델을 대량 삭제하지 않게 한다.
+    if (entries.length !== modelItems.length) return [];
+    return entries;
+  }
+
+  function syncVisibleChatModelsToRegistry(previousOrder, nextOrder) {
+    const raw = readStorage(LS.bottomModelVisibleModels);
+    if (!raw) {
+      visibleChatModelNames = [...nextOrder];
+      saveVisibleChatModelNames();
+      return;
+    }
+
+    let storedVisible = [];
+    try {
+      const parsed = JSON.parse(raw);
+      storedVisible = Array.isArray(parsed) ? parsed.map(normalizeText).filter(Boolean) : [];
+    } catch {
+      storedVisible = [];
+    }
+
+    const previousKnown = new Set(previousOrder);
+    const visibleSet = new Set(storedVisible);
+    let nextVisible = nextOrder.filter((name) => visibleSet.has(name) || !previousKnown.has(name));
+
+    // 모든 기존 선택 모델이 사이트에서 제거된 경우에도 새 모델은 최소 1개 이상 보이게 한다.
+    if (!nextVisible.length) nextVisible = [...nextOrder];
+    visibleChatModelNames = nextVisible;
+    saveVisibleChatModelNames();
+  }
+
+  function clearPendingOfficialModelRegistryRemoval() {
+    pendingOfficialModelRegistryRemovalSignature = '';
+    if (officialModelRegistryRemovalConfirmTimer) {
+      clearTimeout(officialModelRegistryRemovalConfirmTimer);
+      officialModelRegistryRemovalConfirmTimer = null;
+    }
+  }
+
+  function scheduleOfficialModelRegistryRemovalConfirmation(signature) {
+    if (
+      pendingOfficialModelRegistryRemovalSignature === signature &&
+      officialModelRegistryRemovalConfirmTimer
+    ) {
+      return;
+    }
+
+    clearPendingOfficialModelRegistryRemoval();
+    pendingOfficialModelRegistryRemovalSignature = signature;
+    officialModelRegistryRemovalConfirmTimer = setTimeout(() => {
+      officialModelRegistryRemovalConfirmTimer = null;
+      if (pendingOfficialModelRegistryRemovalSignature !== signature) return;
+
+      const menu = DOM.modelMenu();
+      if (menu) syncChatModelRegistryFromOfficialMenu(menu, { confirmRemovalSignature: signature });
+    }, MODEL_REGISTRY_REMOVAL_CONFIRM_MS);
+  }
+
+  function syncChatModelRegistryFromOfficialMenu(menu = DOM.modelMenu(), options = {}) {
+    const entries = scanOfficialModelMenuEntries(menu);
+    if (!entries.length) return false;
+
+    const signature = entries.map((entry) => `${entry.name}|${entry.image}`).join('\n');
+    if (signature === lastOfficialModelRegistrySignature) {
+      clearPendingOfficialModelRegistryRemoval();
+      return false;
+    }
+
+    const previousOrder = [...CHAT_MODEL_ORDER];
+    const previousInfo = CHAT_MODEL_INFO;
+    const previousNames = new Set(previousOrder);
+    const nextOrder = entries.map((entry) => entry.name);
+    const nextNames = new Set(nextOrder);
+    const nextInfo = Object.fromEntries(entries.map((entry) => [entry.name, { image: entry.image }]));
+    const added = nextOrder.filter((name) => !previousNames.has(name));
+    const removed = previousOrder.filter((name) => !nextNames.has(name));
+
+    // 메뉴가 열리는 중 잠깐 일부 항목만 렌더되는 순간을 실제 삭제로 오인하면,
+    // 사용자가 숨겨둔 모델이 다시 켜질 수 있다. 삭제/이름변경은 같은 결과를 한 번 더 확인한다.
+    if (removed.length && options.confirmRemovalSignature !== signature) {
+      scheduleOfficialModelRegistryRemovalConfirmation(signature);
+      return false;
+    }
+
+    clearPendingOfficialModelRegistryRemoval();
+
+    const registryChanged =
+      previousOrder.length !== nextOrder.length ||
+      previousOrder.some((name, index) => name !== nextOrder[index]) ||
+      nextOrder.some((name) => String(previousInfo[name]?.image || '') !== String(nextInfo[name]?.image || ''));
+
+    lastOfficialModelRegistrySignature = signature;
+    lastOfficialModelRegistryAdded = added;
+    lastOfficialModelRegistryRemoved = removed;
+    lastOfficialModelRegistryCount = nextOrder.length;
+
+    if (!registryChanged) return false;
+
+    CHAT_MODEL_INFO = nextInfo;
+    CHAT_MODEL_ORDER = nextOrder;
+    CHAT_MODEL_ICON_MAP = buildChatModelIconMap(CHAT_MODEL_INFO);
+    saveChatModelRegistry();
+    syncVisibleChatModelsToRegistry(previousOrder, nextOrder);
+    refreshVisibleModelChoicesPanel();
+
+    syncOfficialModelVisibilityStyle(getHiddenChatModelNames());
+    applyOfficialModelMenuVisibility(menu);
+
+    if (isBottomModelPopupOpen()) {
+      renderBottomModelPopup(document.getElementById(ID.bottomModelButton), getStaticModelList());
+    }
+
+    return true;
+  }
+
+  function clearOfficialModelRegistryScanTimers() {
+    officialModelRegistryScanTimers.forEach((timer) => clearTimeout(timer));
+    officialModelRegistryScanTimers = [];
+  }
+
+  function scheduleOfficialModelRegistryScanBurst() {
+    clearOfficialModelRegistryScanTimers();
+    officialModelRegistryScanTimers = [80, 220, 520].map((delay) => setTimeout(() => {
+      const menu = DOM.modelMenu();
+      if (menu) syncChatModelRegistryFromOfficialMenu(menu);
+    }, delay));
+  }
+
+  function bindOfficialModelRegistryScan(button = DOM.modelButton()) {
+    if (!button || button.dataset.crackUiModelRegistryBound === '1') return;
+    button.dataset.crackUiModelRegistryBound = '1';
+    button.addEventListener('click', scheduleOfficialModelRegistryScanBurst, { passive: true });
+  }
+
+  function getHiddenChatModelNames() {
+    const visible = new Set(getVisibleChatModelNames());
+    return CHAT_MODEL_ORDER.filter((name) => !visible.has(name));
+  }
+
+  function getChatModelIconFile(name) {
+    return getModelIconFileFromUrl(CHAT_MODEL_INFO[name]?.image);
+  }
+
+  function syncOfficialModelVisibilityStyle(hiddenNames = getHiddenChatModelNames()) {
+    let style = document.getElementById(ID.officialModelVisibilityStyle);
+
+    if (!hiddenNames.length) {
+      style?.remove();
+      return;
+    }
+
+    const selectors = hiddenNames.flatMap((name) => {
+      const file = getChatModelIconFile(name);
+      const escapedName = String(name).replaceAll('\\', '\\\\').replaceAll('\"', '\\"');
+      const next = [
+        `[data-radix-popper-content-wrapper] [role="menu"] [role="menuitem"]:has(img[alt="${escapedName}"])`,
+      ];
+
+      if (file) {
+        const escapedFile = String(file).replaceAll('\\', '\\\\').replaceAll('\"', '\\"');
+        next.push(`[data-radix-popper-content-wrapper] [role="menu"] [role="menuitem"]:has(img[src*="${escapedFile}"])`);
+      }
+
+      return next;
+    });
+
+    if (!style) {
+      style = document.createElement('style');
+      style.id = ID.officialModelVisibilityStyle;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    const nextCss = `${selectors.join(',\n')} {\n  display: none !important;\n}`;
+    if (style.textContent !== nextCss) style.textContent = nextCss;
+  }
+
+  function applyOfficialModelMenuVisibility(menu = DOM.modelMenu()) {
+    if (!menu) {
+      lastOfficialModelVisibilityHiddenCount = 0;
+      return 0;
+    }
+
+    const visible = new Set(getVisibleChatModelNames());
+    let hiddenCount = 0;
+
+    menu.querySelectorAll('[role="menuitem"]').forEach((item) => {
+      const name = getModelNameFromNode(item);
+      if (!isKnownChatModelName(name)) {
+        delete item.dataset.crackUiOfficialModelHidden;
+        return;
+      }
+
+      const shouldHide = !visible.has(name);
+      item.dataset.crackUiOfficialModelHidden = shouldHide ? '1' : '0';
+      if (shouldHide) hiddenCount += 1;
+    });
+
+    lastOfficialModelVisibilityHiddenCount = hiddenCount;
+    return hiddenCount;
+  }
+
+  function syncOfficialModelVisibility() {
+    const hiddenNames = getHiddenChatModelNames();
+    syncOfficialModelVisibilityStyle(hiddenNames);
+    if (!hiddenNames.length) {
+      lastOfficialModelVisibilityHiddenCount = 0;
+      return;
+    }
+    applyOfficialModelMenuVisibility();
   }
 
   function createModelMenuAutoHider() {
@@ -5215,16 +5480,28 @@
     const nameEl = btn.querySelector('.crack-ui-bottom-model-name');
 
     if (iconWrap) {
+      const currentImg = iconWrap.querySelector('img');
       if (info.image) {
-        iconWrap.innerHTML = `<img src="${info.image}" alt="">`;
-      } else {
+        const iconAlreadyMatches =
+          currentImg?.getAttribute('src') === info.image &&
+          iconWrap.children.length === 1;
+
+        if (!iconAlreadyMatches) {
+          const img = document.createElement('img');
+          img.src = info.image;
+          img.alt = '';
+          iconWrap.replaceChildren(img);
+        }
+      } else if (iconWrap.textContent !== '🔥' || iconWrap.children.length > 0) {
         iconWrap.textContent = '🔥';
       }
     }
 
-    if (nameEl) nameEl.textContent = info.name;
-    btn.title = `채팅 모델 변경: ${info.name}`;
-    btn.setAttribute('aria-label', `채팅 모델 변경: ${info.name}`);
+    if (nameEl && nameEl.textContent !== info.name) nameEl.textContent = info.name;
+
+    const label = `채팅 모델 변경: ${info.name}`;
+    if (btn.title !== label) btn.title = label;
+    if (btn.getAttribute('aria-label') !== label) btn.setAttribute('aria-label', label);
   }
 
   function isNodeBeforeInSameParent(node, target) {
@@ -5595,6 +5872,37 @@
     return cachedRoomTopBar;
   }
 
+  function findRoomStatBar() {
+    const topBar = findRoomTopBar();
+    const group = topBar?.parentElement;
+    if (!group) {
+      cachedRoomStatBar = null;
+      return null;
+    }
+
+    if (cachedRoomStatBar?.isConnected && cachedRoomStatBar.parentElement === group) {
+      cachedRoomStatBar.dataset.crackUiRoomStatBar = '1';
+      cachedRoomStatBar.dataset.crackUiStatBar = '1';
+      return cachedRoomStatBar;
+    }
+
+    cachedRoomStatBar = null;
+
+    for (const child of group.children) {
+      if (!(child instanceof HTMLElement) || child === topBar) continue;
+      const cls = String(child.className || '');
+      if (!cls.includes('transition-transform') || !cls.includes('mt-12')) continue;
+      if (!child.querySelector('[aria-roledescription="carousel"]')) continue;
+
+      child.dataset.crackUiRoomStatBar = '1';
+      child.dataset.crackUiStatBar = '1';
+      cachedRoomStatBar = child;
+      return child;
+    }
+
+    return null;
+  }
+
   function releaseRoomTopBarHidden() {
     const bar = cachedRoomTopBar?.isConnected ? cachedRoomTopBar : DOM.roomTopBar();
     if (bar) delete bar.dataset.crackUiRoomTopBarHidden;
@@ -5625,7 +5933,10 @@
     const editable = el.closest?.('textarea, input, [contenteditable="true"], [role="textbox"]');
     if (!editable) return false;
     if (editable.closest?.('[data-crack-ui-room-panel="1"], [data-crack-ui-chat-list-panel="1"], [data-crack-ui-room-top-bar="1"]')) return false;
-    return true;
+    if (isDirectChatComposerEditable(editable)) return true;
+
+    const composer = DOM.composerEditable();
+    return editable === composer || !!composer?.contains?.(editable) || !!editable.contains?.(composer);
   }
 
   function noteRoomTopBarInputInteraction(target) {
@@ -5954,6 +6265,7 @@
       cachedRoomPanel = null;
       cachedRoomPanelToggle = null;
       cachedRoomTopBar = null;
+      cachedRoomStatBar = null;
       return;
     }
 
@@ -5996,6 +6308,7 @@
     }
 
     DOM.roomTopBar();
+    findRoomStatBar();
     syncRoomTopBarVisibility();
 
     if (lastRoomPanelBootCloseHref !== location.href) {
@@ -6212,7 +6525,12 @@
 
   const DOM = {
     header: () => findHeader(),
-    statBars: () => [...document.querySelectorAll('[data-crack-ui-stat-bar="1"]')],
+    statBars: () => {
+      const bars = [...document.querySelectorAll('[data-crack-ui-stat-bar="1"]')];
+      const roomStatBar = findRoomStatBar();
+      if (roomStatBar && !bars.includes(roomStatBar)) bars.push(roomStatBar);
+      return bars;
+    },
     modelButton: () => findOriginalModelButton(),
     modelMenu: () => getOfficialModelMenu(),
     sendButton: () => findBottomSendButton(),
@@ -6282,6 +6600,7 @@
   function resetDomLocatorCache() {
     cachedHeader = null;
     cachedBottomSendButton = null;
+    cachedComposerEditable = null;
     cachedOriginalModelButton = null;
     cachedRoomMenuButton = null;
     cachedChatListPanel = null;
@@ -6290,6 +6609,7 @@
     cachedRoomPanel = null;
     cachedRoomPanelToggle = null;
     cachedRoomTopBar = null;
+    cachedRoomStatBar = null;
   }
 
   function isCrackUiWidthControlledChatListPanel(panel) {
@@ -6343,6 +6663,8 @@
     return true;
   }
 
+
+
   function getMobileChatListPopover() {
     if (!isPhoneLikeViewport()) return null;
 
@@ -6367,6 +6689,8 @@
   }
 
   function forceMobileChatListPopoverLayout() {
+    // Phone chat list is native Crack UI. Do not touch width, overflow, pointer-events, or auto-close.
+    // Only compensate the header-sized bottom gap caused by hidden global header + native 100dvh - 56px height.
     if (!isPhoneLikeViewport() || !autoHideHeader) {
       document.documentElement.classList.remove(CLS.chatListMobileHeaderGapCompensated);
       return false;
@@ -6399,6 +6723,7 @@
   }
 
   function scheduleMobileChatListPopoverLayoutSettle() {
+    // Keep phone popover native; only settle the height compensation right after the proxy click.
     if (!isPhoneLikeViewport()) return;
     for (const delay of [0, 16, 48, 120, 260, 520]) {
       setTimeout(() => {
@@ -6408,7 +6733,8 @@
     }
   }
 
-  function markMobileChatListOpenState() {
+
+function markMobileChatListOpenState() {
     if (!isPhoneLikeViewport()) {
       document.documentElement.classList.remove(CLS.chatListMobilePopoverOpen);
       return false;
@@ -6428,6 +6754,7 @@
     const mobilePopover = DOM.mobileChatListPopover();
     document.documentElement.classList.toggle(CLS.chatListMobilePopoverOpen, !!mobilePopover);
     if (!mobilePopover) document.documentElement.classList.remove(CLS.chatListMobileHeaderGapCompensated);
+    // Cleanup stale markers/styles from 2.0.20~2.0.24 without changing native Crack popover layout.
     for (const panel of document.querySelectorAll('[data-crack-ui-mobile-chat-list-popover="1"], [data-crack-ui-chat-list-panel="1"][role="dialog"]')) {
       if (!(panel instanceof HTMLElement)) continue;
       try {
@@ -6614,6 +6941,7 @@
       return;
     }
 
+    // Desktop only: proximity hover opens, mouse leave closes. No phone/tablet behavior here.
     document.getElementById(ID.chatListHandle)?.remove();
     releaseMobileChatListPopoverForcedStyles();
 
@@ -6748,8 +7076,14 @@
 
       scheduleMobileHide(250);
     }, { passive: true });
+    // Capture the composer Enter before Crack/ProseMirror handles it.
+    // A global Enter with no focused composer is still allowed to focus the chat input;
+    // only the next Enter from the focused, empty composer is blocked.
     document.addEventListener('keydown', (e) => {
       guardEmptyComposerEnterEvent(e);
+    }, true);
+
+    document.addEventListener('keydown', (e) => {
       if (e.defaultPrevented) return;
 
       if (e.key === 'Escape') {
@@ -6822,6 +7156,12 @@
         themeMode,
         episodeUiMode,
         bottomModelPicker,
+        visibleChatModels: getVisibleChatModelNames(),
+        hiddenOfficialChatModels: getHiddenChatModelNames(),
+        modelRegistryCount: lastOfficialModelRegistryCount,
+        modelRegistryAdded: [...lastOfficialModelRegistryAdded],
+        modelRegistryRemoved: [...lastOfficialModelRegistryRemoved],
+        officialModelMenuHiddenCount: lastOfficialModelVisibilityHiddenCount,
         bottomModelPlacement: document.getElementById(ID.bottomModelButton)?.dataset?.crackUiPlacement || 'none',
         bottomModelCooperativeGroup: document.getElementById(ID.bottomModelButton)?.dataset?.crackUiPlacement === 'cooperative-group',
         loreEntryButtonPlacement: getLoreEntryButtonPlacementState(),
@@ -6915,6 +7255,10 @@
     }, delay);
   }
 
+  // === Lore(에리로어) 진입 버튼 위치 보호 ===
+  // UI+가 글로벌 헤더를 접으면 로어가 자리를 못 찾고 버튼을 하단 입력창에 붙이는 문제 방지.
+  // 로어 버튼의 원래 집은 헤더 한 칸 아래 '채팅방 상단바'(모델명·방설정 버튼 줄)다.
+  // 외부 확프 호환용 보정도 DOM facade / locator에 등록해서 debug로 위치를 확인할 수 있게 둔다.
   function findLoreEntryButton() {
     return document.getElementById('lore-inj-entry-button');
   }
@@ -6981,12 +7325,16 @@
     const loreButton = DOM.loreEntryButton();
     if (!loreButton) return;
 
+    // 외부 확프(문장 다듬기)는 #crack-pure-settings-btn을 모델 버튼 바로 앞에 고정한다.
+    // Lore를 모델 버튼 바로 앞에 고정하면 두 확프가 서로 insertBefore를 반복하므로,
+    // AI 설정 버튼이 있으면 Lore는 그 왼쪽으로 양보한다: [Lore][AI 설정][모델].
     const currentState = getLoreStableSiblingState(loreButton);
     if (currentState === 'before-ai-settings' || currentState === 'before-model') return;
 
     const topBar = DOM.loreRoomTopBar();
     if (!topBar) return;
 
+    // 모델 표시 버튼(프로챗 2.5 …)을 찾아 그 주변의 안정 슬롯을 고른다.
     const modelButton =
       topBar.querySelector('button[aria-haspopup="menu"]') ||
       topBar.querySelector('img[src*="model-icon"]')?.closest('button');
@@ -7012,7 +7360,6 @@
     cleanupOldStuffOnce();
     ensureRevealZone();
     ensurePanel();
-    markStatBars();
     if (!pendingThemeApplied) {
       pendingThemeApplied = true;
       syncThemeStateFromOriginalSettings();
@@ -7028,15 +7375,14 @@
     }
     ensureLoreEntryButtonInRoomTopBar();
 
+    bindOfficialModelRegistryScan();
+    syncChatModelRegistryFromOfficialMenu();
     ensureBottomModelPicker();
-    applyEmptySendGuardState();
+    syncOfficialModelVisibility();
     ensureRoomMenuHandle();
     ensureChatListAutoHide();
 
     applyImageSize();
-    applyFontSizes();
-    applyThemeModeHint();
-    applyChatWidth();
     applyState();
     scheduleAnimatedThumbState();
   }
@@ -7070,6 +7416,20 @@
         return;
       }
 
+      const composer = cachedComposerEditable?.isConnected ? cachedComposerEditable : null;
+      const onlyComposerChildChanges =
+        !!composer &&
+        mutations.length > 0 &&
+        mutations.every((mutation) =>
+          mutation.type === 'childList' &&
+          (mutation.target === composer || composer.contains(mutation.target))
+        );
+
+      if (onlyComposerChildChanges) {
+        if (emptySendGuard) scheduleEmptySendGuardUiUpdate();
+        return;
+      }
+
       scheduleInit();
     });
     mo.observe(document.body, {
@@ -7080,815 +7440,10 @@
     });
   }
 
-  // =====================================================
-  // Crack UI Plus: Font & Theme Extension Module
-  // =====================================================
-  // =====================================================
-  // Crack UI Plus: Font Manager (V2 - Global Library & Real-time Mapping)
-  // =====================================================
-
-  const FontDB = {
-    dbName: 'CrackFontManagerDB_v2',
-    version: 1,
-
-    async init() {
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(this.dbName, this.version);
-
-        request.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains('fonts')) {
-            db.createObjectStore('fonts', { keyPath: 'id' });
-          }
-          if (!db.objectStoreNames.contains('roomConfigs')) {
-            db.createObjectStore('roomConfigs', { keyPath: 'roomId' });
-          }
-        };
-
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    },
-
-    async saveFont(fontData) {
-      const db = await this.init();
-      return new Promise((resolve, reject) => {
-        try {
-          const tx = db.transaction('fonts', 'readwrite');
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = (e) => reject(e.target.error);
-          tx.objectStore('fonts').put(fontData);
-        } catch (err) {
-          reject(err);
-        }
-      });
-    },
-    async deleteFont(id) {
-      const db = await this.init();
-      return new Promise((resolve, reject) => {
-        try {
-          const tx = db.transaction('fonts', 'readwrite');
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = (e) => reject(e.target.error);
-          tx.objectStore('fonts').delete(id);
-        } catch (err) {
-          reject(err);
-        }
-      });
-    },
-    async getAllFonts() {
-      const db = await this.init();
-      return new Promise((resolve, reject) => {
-        try {
-          const tx = db.transaction('fonts', 'readonly');
-          const request = tx.objectStore('fonts').getAll();
-          request.onsuccess = () => resolve(request.result || []);
-          request.onerror = (e) => reject(e.target.error);
-        } catch (err) {
-          reject(err);
-        }
-      });
-    },
-
-    async saveRoomConfig(config) {
-      const db = await this.init();
-      return new Promise((resolve, reject) => {
-        try {
-          const tx = db.transaction('roomConfigs', 'readwrite');
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = (e) => reject(e.target.error);
-          tx.objectStore('roomConfigs').put(config);
-        } catch (err) {
-          reject(err);
-        }
-      });
-    },
-    async getRoomConfig(roomId) {
-      const db = await this.init();
-      return new Promise((resolve, reject) => {
-        try {
-          const tx = db.transaction('roomConfigs', 'readonly');
-          const request = tx.objectStore('roomConfigs').get(roomId);
-          request.onsuccess = () => resolve(request.result || null);
-          request.onerror = (e) => reject(e.target.error);
-        } catch (err) {
-          reject(err);
-        }
-      });
-    }
-  };
-
-  // --- 스마트 파싱 및 정규화 헬퍼 함수들 ---
-  function stripFontCssNoise(value) {
-    return String(value || '')
-      .replace(/<style\b[^>]*>/gi, '')
-      .replace(/<\/style>/gi, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .trim();
-  }
-
-  function isDirectFontResource(value) {
-    return /\.(?:woff2?|ttf|otf)(?:[?#].*)?$/i.test(String(value || '').trim());
-  }
-
-  function normalizeFontFormat(url = '') {
-    if (/\.woff2(?:[?#].*)?$/i.test(url)) return 'woff2';
-    if (/\.woff(?:[?#].*)?$/i.test(url)) return 'woff';
-    if (/\.ttf(?:[?#].*)?$/i.test(url)) return 'truetype';
-    if (/\.otf(?:[?#].*)?$/i.test(url)) return 'opentype';
-    return 'woff2';
-  }
-
-  function inferDirectFontWeightRangeFromUrl(value) {
-    const raw = String(value || '').toLowerCase();
-    return /(?:variable|varfont|vf|\bvar\b)/i.test(raw) ? '100 900' : 'normal';
-  }
-
-  function getCurrentRoomId() {
-    const match = location.pathname.match(/\/(?:episodes|c|chats)\/([^/]+)/);
-    return match ? match[1] : 'default_global_room';
-  }
-
-  async function applyFontGroup() {
-    const roomId = getCurrentRoomId();
-    const [allFonts, roomConfig] = await Promise.all([
-      FontDB.getAllFonts(),
-      FontDB.getRoomConfig(roomId)
-    ]);
-
-    let styleEl = document.getElementById('crack-ui-custom-font-style');
-    if (!styleEl) {
-      styleEl = document.createElement('style');
-      styleEl.id = 'crack-ui-custom-font-style';
-      document.head.appendChild(styleEl);
-    }
-
-    const RANGES = {
-      // 기호 및 숫자를 제외한 순수 알파벳과 확장 라틴어만 매칭
-      latin: 'U+0041-005A, U+0061-007A, U+00C0-024F, U+1E00-1EFF',
-      kana: 'U+3040-309F, U+30A0-30FF, U+31F0-31FF',
-      hanzi: 'U+4E00-9FFF, U+3400-4DBF, U+20000-2A6DF, U+F900-FAFF'
-    };
-
-    function createVirtualFont(fontName, newFamilyName, range) {
-      const font = allFonts.find(f => f.name === fontName);
-      if (!font || !font.css) return '';
-
-      // 기존 폰트 CSS를 복제하여 가상의 폰트 이름과 유니코드 범위를 덮어씌움
-      return font.css.replace(/@font-face\s*{([^}]+)}/gi, (match, inner) => {
-        let newInner = inner.replace(/font-family\s*:\s*(['"]?)[^'";]+['"]?\s*(;?)/gi, `font-family: '${newFamilyName}';`);
-        newInner = newInner.replace(/unicode-range\s*:\s*[^;]+;/gi, ''); // 기존 유니코드 지우기
-        newInner += ` unicode-range: ${range}; `;
-        return `@font-face {${newInner}}`;
-      });
-    }
-
-    let finalCSS = '';
-    let fontFamilyStack = [];
-
-    if (roomConfig) {
-      const rawFontsToInject = new Set();
-      if (roomConfig.body) rawFontsToInject.add(roomConfig.body);
-      if (roomConfig.code) rawFontsToInject.add(roomConfig.code);
-      if (roomConfig.title) rawFontsToInject.add(roomConfig.title);
-
-      rawFontsToInject.forEach(fontName => {
-        const font = allFonts.find(f => f.name === fontName);
-        if (font && font.css) {
-          finalCSS += font.css + '\n';
-        }
-      });
-
-      // 다국어 가상 폰트 생성 및 스택 최상단 배치
-      if (roomConfig.latin) {
-        finalCSS += createVirtualFont(roomConfig.latin, 'CrackVirtual_Latin', RANGES.latin) + '\n';
-        fontFamilyStack.push("'CrackVirtual_Latin'");
-      }
-      if (roomConfig.kana) {
-        finalCSS += createVirtualFont(roomConfig.kana, 'CrackVirtual_Kana', RANGES.kana) + '\n';
-        fontFamilyStack.push("'CrackVirtual_Kana'");
-      }
-      if (roomConfig.hanzi) {
-        finalCSS += createVirtualFont(roomConfig.hanzi, 'CrackVirtual_Hanzi', RANGES.hanzi) + '\n';
-        fontFamilyStack.push("'CrackVirtual_Hanzi'");
-      }
-      if (roomConfig.body) {
-        fontFamilyStack.push(`'${roomConfig.body}'`);
-      }
-    }
-
-    // 강력한 Fallback 시스템 폰트 체인 추가
-    const fallbackStack = '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", "맑은 고딕", sans-serif';
-
-    if (fontFamilyStack.length > 0) {
-      const familyValue = fontFamilyStack.join(', ') + ', ' + fallbackStack;
-      finalCSS += `
-        .wrtn-markdown p, .wrtn-markdown span, .wrtn-markdown div,
-        .wrtn-markdown em, .wrtn-markdown strong, .wrtn-markdown b,
-        .wrtn-markdown blockquote {
-          font-family: ${familyValue} !important;
-        }
-      `;
-    }
-
-    if (roomConfig && roomConfig.code) {
-      finalCSS += `
-        .wrtn-codeblock pre, .wrtn-codeblock code,
-        .wrtn-codeblock .shiki span, .wrtn-codeblock div > span {
-          font-family: '${roomConfig.code}', "D2Coding", "Consolas", "Courier New", monospace !important;
-        }
-      `;
-    } else if (fontFamilyStack.length > 0) {
-      finalCSS += `
-        .wrtn-codeblock pre, .wrtn-codeblock code,
-        .wrtn-codeblock .shiki span, .wrtn-codeblock div > span {
-          font-family: revert !important;
-        }
-      `;
-    }
-
-    if (roomConfig && roomConfig.title) {
-      finalCSS += `
-        .group\\/header span.line-clamp-1 {
-          font-family: '${roomConfig.title}', ${fallbackStack} !important;
-          line-height: 1.4 !important;
-          padding-top: 2px !important;
-          padding-bottom: 2px !important;
-          display: block !important;
-          white-space: nowrap !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-        }
-      `;
-    }
-
-    styleEl.innerHTML = finalCSS;
-  }
-
-  function ensureFontModuleStyles() {
-    if (document.getElementById('crack-ui-font-module-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'crack-ui-font-module-styles';
-    style.textContent = `
-      .crack-ui-font-list-wrapper { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-
-      .crack-ui-font-item {
-        display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
-        width: 100%; box-sizing: border-box; padding: 10px 12px;
-        border: 1px solid rgba(255, 255, 255, .065); border-radius: 14px;
-        background: rgba(255, 255, 255, .035); font-family: inherit; text-align: left;
-        transition: background-color 130ms ease, border-color 130ms ease;
-      }
-      .crack-ui-font-item:hover { background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .12); }
-
-      .crack-ui-font-item-top { display: flex; justify-content: space-between; width: 100%; align-items: center; gap: 8px; flex-wrap: nowrap; }
-      .crack-ui-font-item-name-wrap { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-      .crack-ui-font-item-name { font-size: 13px; font-weight: 800; color: rgba(255, 255, 255, .96); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-      .crack-ui-font-item-actions { display: flex; gap: 4px; flex-shrink: 0; align-items: center; white-space: nowrap; }
-
-      .crack-ui-font-star-btn {
-        background: none; border: none; padding: 2px; cursor: pointer;
-        color: rgba(255, 255, 255, 0.25); display: flex; align-items: center; justify-content: center;
-        transition: color 150ms ease, transform 150ms ease; flex-shrink: 0;
-      }
-      .crack-ui-font-star-btn:hover { color: rgba(255, 255, 255, 0.6); transform: scale(1.15); }
-      .crack-ui-font-star-btn.active { color: #FE4532; }
-      .crack-ui-font-star-btn.active:hover { color: #ff6b5c; }
-
-      .crack-ui-font-item-details { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: rgba(255, 255, 255, .58); line-height: 1.3; width: 100%; margin-top: 2px; }
-      .crack-ui-font-item-memo { color: rgba(255, 255, 255, 0.45); }
-
-      .crack-ui-font-text-btn { background: none; border: none; color: rgba(255, 255, 255, .54); font-size: 11px; font-weight: 800; cursor: pointer; padding: 4px; transition: color 130ms ease; }
-      .crack-ui-font-text-btn:hover { color: rgba(255, 255, 255, .9); }
-      .crack-ui-font-text-btn.danger:hover { color: #FE4532; }
-
-      .crack-ui-font-modal-overlay {
-        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0, 0, 0, 0.4); z-index: 2147483000;
-        display: flex; align-items: center; justify-content: center;
-        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-        padding: 16px;
-      }
-      .crack-ui-font-modal {
-        background: rgba(28, 28, 30, .85); width: 100%; max-width: 318px; border-radius: 22px;
-        padding: 16px; color: rgba(255, 255, 255, .94);
-        box-shadow: 0 18px 46px rgba(0, 0, 0, .30), inset 0 1px 0 rgba(255, 255, 255, .07);
-        backdrop-filter: blur(24px) saturate(1.18); -webkit-backdrop-filter: blur(24px) saturate(1.18);
-        max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
-        border: 1px solid rgba(255, 255, 255, .11); box-sizing: border-box;
-      }
-      .crack-ui-font-modal-title { font-size: 14px; font-weight: 800; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.065); display: flex; justify-content: space-between; align-items: center; }
-      .crack-ui-font-modal-label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.58); margin: 12px 0 6px 0; display: block; }
-
-      /* 라이트 모드 대응 */
-      html[data-theme="light"] .crack-ui-font-item, body[data-theme="light"] .crack-ui-font-item { background: rgba(17, 24, 39, .035); border-color: rgba(17, 24, 39, .075); }
-      html[data-theme="light"] .crack-ui-font-item:hover, body[data-theme="light"] .crack-ui-font-item:hover { background: rgba(17, 24, 39, .055); border-color: rgba(17, 24, 39, .12); }
-      html[data-theme="light"] .crack-ui-font-item-name, body[data-theme="light"] .crack-ui-font-item-name { color: rgba(17, 24, 39, .94); }
-      html[data-theme="light"] .crack-ui-font-item-details, body[data-theme="light"] .crack-ui-font-item-details { color: rgba(17, 24, 39, .58); }
-      html[data-theme="light"] .crack-ui-font-item-memo, body[data-theme="light"] .crack-ui-font-item-memo { color: rgba(17, 24, 39, .45); }
-      html[data-theme="light"] .crack-ui-font-text-btn, body[data-theme="light"] .crack-ui-font-text-btn { color: rgba(17, 24, 39, .54); }
-      html[data-theme="light"] .crack-ui-font-text-btn:hover, body[data-theme="light"] .crack-ui-font-text-btn:hover { color: rgba(17, 24, 39, .9); }
-
-      html[data-theme="light"] .crack-ui-font-star-btn { color: rgba(17, 24, 39, 0.2); }
-      html[data-theme="light"] .crack-ui-font-star-btn:hover { color: rgba(17, 24, 39, 0.5); }
-      html[data-theme="light"] .crack-ui-font-star-btn.active { color: #FE4532; }
-
-      html[data-theme="light"] .crack-ui-font-modal {
-        background: rgba(255, 255, 255, .88); color: rgba(17, 24, 39, .94);
-        border-color: rgba(17, 24, 39, .10); box-shadow: 0 18px 46px rgba(15, 23, 42, .14), inset 0 1px 0 rgba(255, 255, 255, .72);
-      }
-      html[data-theme="light"] .crack-ui-font-modal-title { border-color: rgba(17, 24, 39, .065); }
-      html[data-theme="light"] .crack-ui-font-modal-label { color: rgba(17, 24, 39, .58); }
-
-      .crack-ui-multi-font-panel { display: none; padding: 8px 10px; margin-top: 6px; background: rgba(255, 255, 255, 0.035); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.055); }
-      html[data-theme="light"] .crack-ui-multi-font-panel { background: rgba(17, 24, 39, 0.035); border-color: rgba(17, 24, 39, 0.065); }
-      .crack-ui-multi-font-toggle { background: none; border: none; color: rgba(255, 255, 255, .58); font-size: 11px; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: color 130ms ease; width: 100%; text-align: right; }
-      .crack-ui-multi-font-toggle:hover { color: #FE4532; }
-      html[data-theme="light"] .crack-ui-multi-font-toggle { color: rgba(17, 24, 39, .58); }
-    `;
-    document.head.appendChild(style);
-  }
-
-  async function openFontSettingsModal(fontData) {
-    const currentMemo = fontData.memo || '';
-
-    const overlay = document.createElement('div');
-    overlay.className = 'crack-ui-font-modal-overlay';
-
-    overlay.innerHTML = `
-      <div class="crack-ui-font-modal" onclick="event.stopPropagation()">
-        <div class="crack-ui-font-modal-title">
-          <span>${fontData.name}</span>
-        </div>
-
-        <label class="crack-ui-font-modal-label">메모</label>
-        <input type="text" id="modal-memo" class="crack-ui-font-input" value="${currentMemo}" placeholder="폰트에 대한 짧은 설명">
-
-        <div class="crack-ui-btn-group" style="margin-top: 16px;">
-          <button type="button" id="modal-cancel-btn" class="crack-ui-btn crack-ui-btn-danger">취소</button>
-          <button type="button" id="modal-save-btn" class="crack-ui-btn crack-ui-btn-primary">저장</button>
-        </div>
-      </div>
-    `;
-
-    const closeModal = () => document.body.removeChild(overlay);
-    overlay.addEventListener('click', closeModal);
-    overlay.querySelector('#modal-cancel-btn').addEventListener('click', closeModal);
-
-    overlay.querySelector('#modal-save-btn').addEventListener('click', async () => {
-      const newMemo = overlay.querySelector('#modal-memo').value.trim();
-
-      const updatedFont = { ...fontData, memo: newMemo };
-      // 혹시 DB에 남아있을지 모를 폴더/태그 찌꺼기 제거
-      delete updatedFont.folder;
-      delete updatedFont.tags;
-
-      await FontDB.saveFont(updatedFont);
-
-      closeModal();
-      await syncFontUI();
-    });
-
-    document.body.appendChild(overlay);
-  }
-
-  async function syncFontUI() {
-    const listWrapper = document.getElementById('crack-ui-font-list-wrapper');
-    const selBody = document.getElementById('crack-ui-font-sel-body');
-    const selCode = document.getElementById('crack-ui-font-sel-code');
-    const selTitle = document.getElementById('crack-ui-font-sel-title');
-    const selLatin = document.getElementById('crack-ui-font-sel-latin');
-    const selKana = document.getElementById('crack-ui-font-sel-kana');
-    const selHanzi = document.getElementById('crack-ui-font-sel-hanzi');
-
-    if (!listWrapper || !selBody) return;
-
-    const roomId = getCurrentRoomId();
-    const [allFonts, roomConfig] = await Promise.all([
-      FontDB.getAllFonts(),
-      FontDB.getRoomConfig(roomId)
-    ]);
-    const config = roomConfig || { roomId, body: '', code: '', title: '', latin: '', kana: '', hanzi: '' };
-
-    listWrapper.innerHTML = '';
-
-    const createFontElement = (f) => {
-      const item = document.createElement('div');
-      item.className = 'crack-ui-font-item';
-
-      let detailsHtml = '';
-      if (f.memo) detailsHtml += `<span class="crack-ui-font-item-memo">${f.memo}</span>`;
-
-      const detailsBlock = detailsHtml ? `<div class="crack-ui-font-item-details">${detailsHtml}</div>` : '';
-
-      const isFav = f.favorite ? 'active' : '';
-      const starFill = f.favorite ? 'currentColor' : 'none';
-
-      item.innerHTML = `
-        <div class="crack-ui-font-item-top">
-          <div class="crack-ui-font-item-name-wrap">
-            <button type="button" class="crack-ui-font-star-btn ${isFav}" title="즐겨찾기">
-              <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="${starFill}" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-              </svg>
-            </button>
-            <span class="crack-ui-font-item-name">${f.name}</span>
-          </div>
-          <div class="crack-ui-font-item-actions">
-            <button type="button" class="crack-ui-font-text-btn crack-ui-font-setting-btn">설정</button>
-            <button type="button" class="crack-ui-font-text-btn danger crack-ui-font-del-btn">삭제</button>
-          </div>
-        </div>
-        ${detailsBlock}
-      `;
-
-      item.querySelector('.crack-ui-font-star-btn').addEventListener('click', async (e) => {
-        e.preventDefault(); e.stopPropagation();
-        f.favorite = !f.favorite;
-        await FontDB.saveFont(f);
-        await syncFontUI();
-      });
-
-      item.querySelector('.crack-ui-font-setting-btn').addEventListener('click', (e) => {
-        e.preventDefault(); e.stopPropagation();
-        openFontSettingsModal(f);
-      });
-
-      item.querySelector('.crack-ui-font-del-btn').addEventListener('click', async (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if(window.confirm(`'${f.name}' 폰트를 보관함에서 삭제하시겠습니까?`)) {
-          try {
-            await FontDB.deleteFont(f.id);
-            let currentConfig = await FontDB.getRoomConfig(roomId);
-            if (currentConfig) {
-              let updated = false;
-              ['body', 'code', 'title', 'latin', 'kana', 'hanzi'].forEach(k => {
-                if (currentConfig[k] === f.name) { currentConfig[k] = ''; updated = true; }
-              });
-              if (updated) await FontDB.saveRoomConfig(currentConfig);
-            }
-            await applyFontGroup();
-            await syncFontUI();
-          } catch (err) { alert("삭제 중 오류가 발생했습니다."); }
-        }
-      });
-      return item;
-    };
-
-    if (allFonts.length === 0) {
-      listWrapper.innerHTML = '<span class="crack-ui-row-desc" style="padding: 4px;">등록된 폰트가 없습니다.</span>';
-    } else {
-      const sortedFonts = allFonts.sort((a, b) => {
-        const aFav = a.favorite ? 1 : 0;
-        const bFav = b.favorite ? 1 : 0;
-        if (aFav !== bFav) return bFav - aFav;
-        return a.name.localeCompare(b.name);
-      });
-      sortedFonts.forEach(f => listWrapper.appendChild(createFontElement(f)));
-    }
-
-    const generateOptions = () => {
-      const sorted = allFonts.sort((a, b) => {
-        const aFav = a.favorite ? 1 : 0;
-        const bFav = b.favorite ? 1 : 0;
-        if (aFav !== bFav) return bFav - aFav;
-        return a.name.localeCompare(b.name);
-      });
-      return `<option value="">기본</option>` +
-        sorted.map(f => {
-          const mark = f.favorite ? '★ ' : '';
-          return `<option value="${f.name}">${mark}${f.name}</option>`;
-        }).join('');
-    };
-
-    const opts = generateOptions();
-    if(selBody) selBody.innerHTML = opts;
-    if(selCode) selCode.innerHTML = opts;
-    if(selTitle) selTitle.innerHTML = opts;
-    if(selLatin) selLatin.innerHTML = opts;
-    if(selKana) selKana.innerHTML = opts;
-    if(selHanzi) selHanzi.innerHTML = opts;
-
-    if(selBody) selBody.value = config.body || '';
-    if(selCode) selCode.value = config.code || '';
-    if(selTitle) selTitle.value = config.title || '';
-    if(selLatin) selLatin.value = config.latin || '';
-    if(selKana) selKana.value = config.kana || '';
-    if(selHanzi) selHanzi.value = config.hanzi || '';
-  }
-
-  async function handleSelectChange() {
-    const roomId = getCurrentRoomId();
-    let roomConfig = (await FontDB.getRoomConfig(roomId)) || { roomId, body: '', code: '', title: '', latin: '', kana: '', hanzi: '' };
-
-    roomConfig.body = document.getElementById('crack-ui-font-sel-body').value;
-    roomConfig.code = document.getElementById('crack-ui-font-sel-code').value;
-    roomConfig.title = document.getElementById('crack-ui-font-sel-title').value;
-    roomConfig.latin = document.getElementById('crack-ui-font-sel-latin').value;
-    roomConfig.kana = document.getElementById('crack-ui-font-sel-kana').value;
-    roomConfig.hanzi = document.getElementById('crack-ui-font-sel-hanzi').value;
-
-    await FontDB.saveRoomConfig(roomConfig);
-    applyFontGroup();
-  }
-
-  function injectFontThemeUI() {
-    ensureFontModuleStyles();
-    const panelBody = document.querySelector('.crack-ui-panel-body');
-    if (!panelBody) return;
-
-    if (document.querySelector('[data-crack-ui-section="font"]')) {
-      syncFontUI();
-      return;
-    }
-
-    const savedFontOpen = localStorage.getItem('crack_ui_section_font_open') === '1';
-    const savedMultiFontOpen = localStorage.getItem('crack_ui_font_multi_open') === '1';
-
-    const fontSection = document.createElement('div');
-    fontSection.className = 'crack-ui-section';
-    fontSection.dataset.crackUiSection = 'font';
-    fontSection.dataset.open = savedFontOpen ? '1' : '0';
-
-    fontSection.innerHTML = `
-      <button type="button" class="crack-ui-section-head" data-crack-ui-section-toggle="font" aria-expanded="${savedFontOpen ? 'true' : 'false'}">
-        <span><span class="crack-ui-section-title">폰트</span></span>
-        <span class="crack-ui-section-chevron" aria-hidden="true">▾</span>
-      </button>
-
-      <div class="crack-ui-section-body" data-crack-ui-section-body="font" ${savedFontOpen ? '' : 'hidden'}>
-        <div class="crack-ui-choice-group">
-          <div class="crack-ui-choice-head" style="margin-bottom: 8px;">
-            <span class="crack-ui-choice-title">보관함</span>
-          </div>
-
-          <div id="crack-ui-font-list-wrapper" class="crack-ui-font-list-wrapper"></div>
-
-          <textarea id="crack-ui-font-add-css" class="crack-ui-font-input crack-ui-font-textarea" style="min-height: 50px; font-size:11px;" placeholder="눈누 @font-face, 구글 폰트 <link>, 폰트 파일(.woff2) URL 입력"></textarea>
-          <button type="button" class="crack-ui-btn crack-ui-btn-danger" id="crack-ui-font-add-btn" style="padding: 6px; margin-top: 4px;">등록</button>
-        </div>
-
-        <div class="crack-ui-choice-group">
-          <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title">설정</span>
-          </div>
-
-          <div style="margin-top: 4px;">
-            <div class="crack-ui-row-desc">본문 (기본/한국어)</div>
-            <select id="crack-ui-font-sel-body" class="crack-ui-font-select"></select>
-          </div>
-
-          <div style="margin-top: 2px;">
-            <button type="button" id="crack-ui-multi-font-toggle" class="crack-ui-multi-font-toggle">
-              다국어 상세 ${savedMultiFontOpen ? '▴' : '▾'}
-            </button>
-          </div>
-
-          <div id="crack-ui-multi-font-panel" class="crack-ui-multi-font-panel" style="display: ${savedMultiFontOpen ? 'block' : 'none'};">
-            <div style="margin-top: 0;">
-              <div class="crack-ui-row-desc">영문 (순수 알파벳)</div>
-              <select id="crack-ui-font-sel-latin" class="crack-ui-font-select"></select>
-            </div>
-            <div style="margin-top: 8px;">
-              <div class="crack-ui-row-desc">일본어 (히라가나/가타카나)</div>
-              <select id="crack-ui-font-sel-kana" class="crack-ui-font-select"></select>
-            </div>
-            <div style="margin-top: 8px;">
-              <div class="crack-ui-row-desc">한자 (원하는 디자인 폰트 할당)</div>
-              <select id="crack-ui-font-sel-hanzi" class="crack-ui-font-select"></select>
-            </div>
-          </div>
-
-          <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">코드블럭</div>
-            <select id="crack-ui-font-sel-code" class="crack-ui-font-select"></select>
-          </div>
-
-          <div style="margin-top: 8px;">
-            <div class="crack-ui-row-desc">스토리명</div>
-            <select id="crack-ui-font-sel-title" class="crack-ui-font-select"></select>
-          </div>
-        </div>
-
-        <div class="crack-ui-choice-group" style="margin-top: 8px;">
-          <div class="crack-ui-choice-head" style="margin-bottom: 4px;">
-            <span class="crack-ui-choice-title">글자 크기 조절</span>
-          </div>
-
-          <div class="crack-ui-range-row" style="padding: 8px 12px; background: transparent; border: none;">
-            <div class="crack-ui-range-head">
-              <span class="crack-ui-row-name" style="font-size: 12px;">본문 폰트</span>
-              <span id="crack-ui-body-font-val" class="crack-ui-range-value"></span>
-            </div>
-            <input id="crack-ui-body-font-slider" class="crack-ui-range" type="range" min="-50" max="50" step="1">
-          </div>
-
-          <div class="crack-ui-range-row" style="padding: 8px 12px; background: transparent; border: none; margin-top: -6px;">
-            <div class="crack-ui-range-head">
-              <span class="crack-ui-row-name" style="font-size: 12px;">코드블럭 폰트</span>
-              <span id="crack-ui-code-font-val" class="crack-ui-range-value"></span>
-            </div>
-            <input id="crack-ui-code-font-slider" class="crack-ui-range" type="range" min="-50" max="50" step="1">
-          </div>
-        </div>
-      </div>
-    `;
-
-    panelBody.appendChild(fontSection);
-
-    const toggleBtn = fontSection.querySelector('[data-crack-ui-section-toggle="font"]');
-    const sectionBody = fontSection.querySelector('[data-crack-ui-section-body="font"]');
-    toggleBtn.addEventListener('click', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      const isOpen = fontSection.dataset.open === '1';
-      fontSection.dataset.open = isOpen ? '0' : '1';
-      toggleBtn.setAttribute('aria-expanded', !isOpen);
-      sectionBody.hidden = isOpen;
-      localStorage.setItem('crack_ui_section_font_open', fontSection.dataset.open);
-      try { typeof positionPanel === 'function' && positionPanel(); } catch {}
-    });
-
-    const multiToggleBtn = document.getElementById('crack-ui-multi-font-toggle');
-    const multiPanel = document.getElementById('crack-ui-multi-font-panel');
-    multiToggleBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const isHidden = multiPanel.style.display === 'none';
-      multiPanel.style.display = isHidden ? 'block' : 'none';
-      multiToggleBtn.innerHTML = `다국어 상세 ${isHidden ? '▴' : '▾'}`;
-      localStorage.setItem('crack_ui_font_multi_open', isHidden ? '1' : '0');
-      try { typeof positionPanel === 'function' && positionPanel(); } catch {}
-    });
-
-    const addBtn = document.getElementById('crack-ui-font-add-btn');
-    const addCssInput = document.getElementById('crack-ui-font-add-css');
-
-    // 내부 공통 함수: 폰트 객체들을 받아 DB에 저장하고 UI 갱신
-    async function saveAndApplyFonts(groups) {
-      for (const name of Object.keys(groups)) {
-        const fontData = {
-          id: 'font_' + name.replace(/\s+/g, '_') + '_' + Date.now(),
-          name: name,
-          css: groups[name].join('\n\n'),
-          memo: '', favorite: false
-        };
-
-        const allExisting = await FontDB.getAllFonts();
-        const existing = allExisting.find(f => f.name === name);
-        if (existing) fontData.id = existing.id;
-
-        await FontDB.saveFont(fontData);
-      }
-      addCssInput.value = '';
-      await applyFontGroup();
-      await syncFontUI();
-    }
-
-    addBtn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      const rawInput = addCssInput.value.trim();
-      if (!rawInput) return alert('눈누 @font-face 코드, 구글 폰트 <link>, 또는 폰트 파일 주소(.woff2 등)를 입력해주세요.');
-
-      addBtn.textContent = '등록 중...';
-      addBtn.disabled = true;
-
-      try {
-        const cleanedInput = stripFontCssNoise(rawInput);
-
-        // 1. 다이렉트 폰트 파일 주소(.woff2 등)인 경우 이름 묻기(Prompt)
-        if (isDirectFontResource(cleanedInput)) {
-          const fontName = prompt("폰트 목록에 표시할 이름을 입력해주세요.\n(예: 내 글꼴, 커스텀 명조)");
-          if (!fontName || !fontName.trim()) {
-            addBtn.textContent = '등록';
-            addBtn.disabled = false;
-            return; // 취소시 중단
-          }
-
-          const familyName = fontName.trim();
-          const weight = inferDirectFontWeightRangeFromUrl(cleanedInput);
-          const format = normalizeFontFormat(cleanedInput);
-          // 즉석에서 @font-face 조립
-          const generatedCss = `@font-face {\n  font-family: "${familyName}";\n  src: url("${cleanedInput}") format("${format}");\n  font-weight: ${weight};\n  font-style: normal;\n  font-display: swap;\n}`;
-
-          await saveAndApplyFonts({ [familyName]: [generatedCss] });
-          return;
-        }
-
-        // 2. 외부 CSS 파싱 (구글 <link>, 눈누 @import 등)
-        let combinedCSS = cleanedInput;
-        const urlRegex = /(?:@import\s+(?:url\()?['"]?|href\s*=\s*['"]|url\(['"]?|^\s*)(https?:\/\/[^'"\s>)]+)/gi;
-        let match;
-        const fetchPromises = [];
-        const urlsToFetch = new Set();
-
-        while ((match = urlRegex.exec(cleanedInput)) !== null) {
-          let fontUrl = match[1].replace(/&amp;/g, '&');
-          if (!urlsToFetch.has(fontUrl) && !isDirectFontResource(fontUrl)) {
-            urlsToFetch.add(fontUrl);
-            fetchPromises.push(
-              fetch(fontUrl, { cache: 'force-cache', credentials: 'omit' })
-                .then(res => res.ok ? res.text() : '')
-                .catch(err => {
-                  console.warn("[Crack UI Font] 외부 폰트 CSS Fetch 실패:", fontUrl, err);
-                  return '';
-                })
-            );
-          }
-        }
-
-        if (fetchPromises.length > 0) {
-          const fetchedStyles = await Promise.all(fetchPromises);
-          combinedCSS += '\n' + fetchedStyles.join('\n');
-        }
-
-        // 3. 최종 병합된 텍스트에서 @font-face 추출
-        const fontFaceRegex = /@font-face\s*{([^}]+)}/gi;
-        let ffMatch;
-        const fontGroups = {};
-
-        while ((ffMatch = fontFaceRegex.exec(combinedCSS)) !== null) {
-          const block = ffMatch[0];
-          const inner = ffMatch[1];
-          const nameMatch = inner.match(/font-family\s*:\s*['"]?([^'";\n]+)['"]?/i);
-
-          if (nameMatch && nameMatch[1]) {
-            const familyName = nameMatch[1].trim();
-            if (!fontGroups[familyName]) {
-              fontGroups[familyName] = [];
-            }
-            fontGroups[familyName].push(block);
-          }
-        }
-
-        const familyNames = Object.keys(fontGroups);
-
-        if (familyNames.length === 0) {
-          return alert("입력하신 코드에서 폰트 정보(@font-face)를 찾을 수 없습니다.");
-        }
-
-        await saveAndApplyFonts(fontGroups);
-
-      } catch (err) {
-        console.error("[Crack UI Font] 저장 오류:", err);
-        alert("폰트 저장 중 오류가 발생했습니다.");
-      } finally {
-        addBtn.textContent = '등록';
-        addBtn.disabled = false;
-      }
-    });
-
-    const selects = ['body', 'code', 'title', 'latin', 'kana', 'hanzi'];
-    selects.forEach(id => {
-      const el = document.getElementById(`crack-ui-font-sel-${id}`);
-      if(el) el.addEventListener('change', handleSelectChange);
-    });
-
-    const bodySlider = document.getElementById('crack-ui-body-font-slider');
-    const codeSlider = document.getElementById('crack-ui-code-font-slider');
-    const bodyVal = document.getElementById('crack-ui-body-font-val');
-    const codeVal = document.getElementById('crack-ui-code-font-val');
-
-    if (bodySlider && bodyVal) {
-      bodySlider.value = bodyFontSizeOffset;
-      bodyVal.textContent = formatFontSizeDisplay(bodyFontSizeOffset);
-      bodySlider.addEventListener('input', (e) => {
-        bodyFontSizeOffset = clampFontSizeOffset(e.target.value);
-        bodyVal.textContent = formatFontSizeDisplay(bodyFontSizeOffset);
-        applyFontSizes();
-      });
-      bodySlider.addEventListener('change', saveFontSizesSoon);
-    }
-
-    if (codeSlider && codeVal) {
-      codeSlider.value = codeFontSizeOffset;
-      codeVal.textContent = formatFontSizeDisplay(codeFontSizeOffset);
-      codeSlider.addEventListener('input', (e) => {
-        codeFontSizeOffset = clampFontSizeOffset(e.target.value);
-        codeVal.textContent = formatFontSizeDisplay(codeFontSizeOffset);
-        applyFontSizes();
-      });
-      codeSlider.addEventListener('change', saveFontSizesSoon);
-    }
-
-    syncFontUI();
-  }
-    ready(() => {
-      // 1. 디버그 API 설치 (선택사항)
-      if (typeof installCrackUiDebugApi === 'function') {
-        installCrackUiDebugApi();
-      }
-
-      // 2. 핵심 UI 초기화 (톱니바퀴 아이콘 생성, 설정 패널 생성 등)
-      init();
-
-      // 3. 페이지 변화 및 테마 변경 감지 시작
-      observe();
-      observeThemeDomGuard();
-
-      // 4. init() 실행 후 폰트 설정 패널 모듈 주입
-      if (document.getElementById(ID.panel)) {
-        injectFontThemeUI();
-      }
-    });
-
+  ready(() => {
+    installCrackUiDebugApi();
+    runInit();
+    observeThemeDomGuard();
+    observe();
+  });
 })();
